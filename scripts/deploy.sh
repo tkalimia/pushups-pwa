@@ -42,13 +42,6 @@ git remote get-url origin >/dev/null 2>&1 || git remote add origin "https://gith
 
 bash tools/build-stamp.sh
 
-if ! gh api "repos/$USER_LOGIN/$REPO_NAME/pages" >/dev/null 2>&1; then
-  echo "enabling GitHub Pages (branch $BRANCH, /)"
-  printf '{"source":{"branch":"%s","path":"/"},"message":"enable pages"}' "$BRANCH" \
-    | gh api --method POST "repos/$USER_LOGIN/$REPO_NAME/pages" --input - >/dev/null \
-    || echo "  (could not enable Pages automatically — turn it on at Settings ▸ Pages, branch $BRANCH, folder /)"
-fi
-
 git add -A
 if git diff --cached --quiet; then
   echo "nothing new to commit"
@@ -57,6 +50,13 @@ else
   echo "committed: $MSG"
 fi
 git push -q -u origin "$BRANCH"
+
+if ! gh api "repos/$USER_LOGIN/$REPO_NAME/pages" >/dev/null 2>&1; then
+  echo "enabling GitHub Pages (branch $BRANCH, /)"
+  printf '{"source":{"branch":"%s","path":"/"},"message":"enable pages"}' "$BRANCH" \
+    | gh api --method POST "repos/$USER_LOGIN/$REPO_NAME/pages" --input - >/dev/null \
+    || echo "  (could not enable Pages automatically — turn it on at Settings ▸ Pages, branch $BRANCH, folder /)"
+fi
 
 URL="https://$USER_LOGIN.github.io/$REPO_NAME/"
 echo
