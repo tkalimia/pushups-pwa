@@ -34,7 +34,7 @@ cat > 'css/app.css' <<'__EOF_css_app_css__'
   --sheet:#13211F;
   --text:#DCE6E2;
   --muted:#7F918C;
-  --hair:rgba(220,230,226,.14);
+  --hair:rgba(220,230,226,.12);
   --tint:rgba(220,230,226,.05);
   --num:#DCE6E2;
 
@@ -54,7 +54,7 @@ cat > 'css/app.css' <<'__EOF_css_app_css__'
     --sheet:#F2F5F2;
     --text:#0E1A18;
     --muted:#5B6965;
-    --hair:rgba(14,26,24,.16);
+    --hair:rgba(14,26,24,.11);
     --tint:rgba(14,26,24,.045);
     --num:#0E1A18;
   }
@@ -87,7 +87,8 @@ a{color:inherit;text-decoration:none}
   padding:7px 2px calc(7px + var(--sab));background:var(--sheet);border-top:1px solid var(--hair);
   font-size:11px;line-height:1.05;text-align:center;z-index:60}
 #tabs a{flex:1;color:var(--muted);transition:color .15s linear}
-#tabs a .ic{display:block;font-size:16px;margin-bottom:3px}
+#tabs a .ic{display:block;height:20px;margin-bottom:4px}
+#tabs a .ic svg{width:19px;height:19px;display:block;margin:0 auto}
 #tabs a[aria-current="true"]{color:var(--text)}
 #tabs a.todo{opacity:.45}
 
@@ -106,11 +107,13 @@ a{color:inherit;text-decoration:none}
 .btn-big{width:100%;padding:17px;font-size:17px}
 .btn[disabled]{opacity:.4}
 .step{width:76px;height:60px;border-radius:14px;background:var(--tint);border:1px solid var(--hair);
-  font:700 30px/1 var(--display);color:var(--text)}
+  font:700 30px/1 var(--display);color:var(--text);display:inline-flex;align-items:center;justify-content:center}
 .step:active{background:var(--hair)}
 select,input[type=text],input[type=number],textarea{background:var(--tint);border:1px solid var(--hair);
   border-radius:10px;padding:10px 12px;width:100%;appearance:none}
-input[type=range]{width:100%}
+select{padding-right:30px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%237F918C' stroke-width='1.8' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 11px center}
+input[type=range]{width:100%;accent-color:var(--track);height:28px}
 input[type=checkbox]{width:22px;height:22px;accent-color:var(--track)}
 label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;
   border-bottom:1px solid var(--hair);font-size:15px}
@@ -133,7 +136,7 @@ label.tog .sub{display:block;font-size:12px}
 .statusbar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--hair);font-size:13px}
 .statusbar .bar{flex:1}
 .bar{height:5px;background:var(--tint);border-radius:3px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--track);transition:width .3s linear}
+.bar i{display:block;height:100%;width:0;background:var(--track);transition:width .3s linear}
 .bar i.bad{background:var(--rose)}
 .chk{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px}
 .chk .mk{width:16px;flex:none;text-align:center;font-weight:700;color:var(--muted)}
@@ -147,12 +150,14 @@ label.tog .sub{display:block;font-size:12px}
 
 /* ── counter ── */
 .counter{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
-.counter .camwrap{flex:none;height:26%}
+.counter[data-phase="setup"] .camwrap{flex:none;height:42%}
+.counter[data-phase="set"] .camwrap,.counter[data-phase="countdown"] .camwrap{flex:none;height:26%}
+.counter[data-phase="summary"] .camwrap{display:none}
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   transition:opacity .25s linear}
 .stage.dim{opacity:.35}
 #repnum{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
-  font-size:min(88vw,46vh,400px);line-height:.88;color:var(--num);transition:color .16s linear}
+  font-size:min(46vh,400px,calc(176vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
 #repnum.tick{color:var(--brass)}
 #cdnum{font-family:var(--display);font-weight:700;font-size:min(70vw,38vh,320px);line-height:.9;color:var(--brass)}
 #chip{font-size:14px;color:var(--muted);text-align:center;min-height:20px;margin-top:6px}
@@ -160,13 +165,15 @@ label.tog .sub{display:block;font-size:12px}
 .hairline.on{background:var(--rose)}
 .corr{display:flex;align-items:center;justify-content:center;gap:16px;padding:8px 0 4px}
 .corr .n{font:700 20px/1 var(--display);min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
-.topline{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;font-size:13px;
+.topline{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 14px;font-size:13px;
   color:var(--muted);font-variant-numeric:tabular-nums}
+.topline .clock{justify-self:start}
+.topline .endslot{justify-self:end}
 .warnbox{padding:9px 14px;background:rgba(208,86,107,.14);color:var(--rose);font-size:14px;border-top:1px solid var(--rose)}
 .warnbox[hidden]{display:none}
 
 /* ── summary ── */
-.sheet{flex:1;min-height:0;overflow:auto;background:var(--sheet);padding:14px 16px calc(16px + var(--sab))}
+.sheet{flex:1;min-height:0;align-self:stretch;overflow:auto;background:var(--sheet);padding:14px 16px calc(16px + var(--sab))}
 .finum{font:700 92px/1 var(--display);text-align:center;font-variant-numeric:tabular-nums;color:var(--num)}
 .finum input{all:unset;display:block;width:100%;text-align:center;font:inherit;color:inherit}
 .kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
@@ -224,11 +231,11 @@ cat > 'index.html' <<'__EOF_index_html__'
 <div id="banner"></div>
 <main id="view"></main>
 <nav id="tabs" aria-label="Sections">
-  <a href="#/today" data-tab="today"><span class="ic">◍</span>Today</a>
-  <a href="#/train" data-tab="train"><span class="ic">↑</span>Train</a>
-  <a class="todo" href="#/progress" data-tab="progress"><span class="ic">◠</span>Progress</a>
-  <a class="todo" href="#/badges" data-tab="badges"><span class="ic">✦</span>Badges</a>
-  <a href="#/settings" data-tab="settings"><span class="ic">⚙</span>Settings</a>
+  <a href="#/today" data-tab="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>Today</a>
+  <a href="#/train" data-tab="train"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5"/><path d="M6 11l6-6 6 6"/></svg>Train</a>
+  <a class="todo" href="#/progress" data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19v-4"/><path d="M12 19V8"/><path d="M19 19v-8"/></svg>Progress</a>
+  <a class="todo" href="#/badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5.4"/><path d="M9.2 13.6L7.5 20l4.5-2.6L16.5 20l-1.7-6.4"/></svg>Badges</a>
+  <a href="#/settings" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h9"/><path d="M19.2 8H20"/><circle cx="16.6" cy="8" r="2.4"/><path d="M4 16h4"/><path d="M14.2 16H20"/><circle cx="11.4" cy="16" r="2.4"/></svg>Settings</a>
 </nav>
 <script>
 if ('serviceWorker' in navigator) {
@@ -706,7 +713,6 @@ export class Counter {
     this.medElbow = new MedianFilter(3);
     this.medHip = new MedianFilter(3);
     this.hipEma = null;
-    this.angle = null;
     this.rep = emptyRep();
     this.lastRep = null;
     this.events = [];
@@ -723,7 +729,6 @@ export class Counter {
     this.medElbow.reset();
     this.medHip.reset();
     this.hipEma = null;
-    this.angle = null;
     this.normBaseline = null;
   }
 
@@ -3323,13 +3328,13 @@ export default function train(host) {
   const checkWhy = {};
 
   host.innerHTML = `
-    <div class="counter">
+    <div class="counter" data-phase="setup">
       <div class="topline">
-        <span id="clock">--:--</span>
-        <span class="grow" id="phaseLabel" style="text-align:center">set up</span>
-        <button class="btn btn-warn" id="endBtn" hidden>End</button>
+        <span id="clock" class="clock">--:--</span>
+        <span id="phaseLabel">set up</span>
+        <span class="endslot"><button class="btn btn-warn" id="endBtn" hidden>End</button></span>
       </div>
-      <div id="hairline" style="height:3px;background:transparent"></div>
+      <div class="hairline" id="hairline"></div>
       <div class="warnbox" id="warnbox" hidden></div>
       <div class="camwrap" id="camwrap">
         <video id="video" autoplay playsinline muted></video>
@@ -3343,6 +3348,7 @@ export default function train(host) {
   const q = (s) => host.querySelector(s);
   els.video = q('#video');
   els.overlay = q('#overlay');
+  els.root = q('.counter');
   els.camwrap = q('#camwrap');
   els.camoff = q('#camoff');
   els.stage = q('#stage');
@@ -3375,8 +3381,13 @@ export default function train(host) {
   }
 
   // ── setup ─────────────────────────────────────────────────────
+  function setPhase(p) {
+    phase = p;
+    els.root.dataset.phase = p;
+  }
+
   function renderSetup() {
-    phase = 'setup';
+    setPhase('setup');
     els.overlay.style.display = '';
     lastOut = EMPTY_OUT;
     els.phaseLabel.textContent = load().manualMode ? 'manual log' : 'set up';
@@ -3499,7 +3510,7 @@ export default function train(host) {
   }
 
   function startCountdown(n) {
-    phase = 'countdown';
+    setPhase('countdown');
     els.phaseLabel.textContent = 'into plank';
     let left = n;
     els.stage.innerHTML = `
@@ -3529,7 +3540,7 @@ export default function train(host) {
   }
 
   function startSet() {
-    phase = 'set';
+    setPhase('set');
     counter.reset('set-start');
     counter.setParams(params());
     counter.setArmHold(load().armHoldMs);
@@ -3579,6 +3590,7 @@ export default function train(host) {
   function paintCount() {
     if (!els.repnum || phase !== 'set') return;
     const n = Math.max(0, detected() + manualAdj);
+    els.repnum.style.setProperty('--nd', String(n).length);
     if (els.repnum.textContent !== String(n)) {
       els.repnum.textContent = String(n);
       els.repnum.classList.add('tick');
@@ -3594,7 +3606,7 @@ export default function train(host) {
   }
 
   function startManualSet() {
-    phase = 'set';
+    setPhase('set');
     setStart = Date.now();
     lastRepAt = setStart;
     manualAdj = 0;
@@ -3635,7 +3647,7 @@ export default function train(host) {
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     if (phase === 'countdown') { renderSetup(); return; }
     if (phase !== 'set') return;
-    phase = 'summary';
+    setPhase('summary');
     els.endBtn.hidden = true;
     const det = detected();
     const fin = Math.max(0, det + manualAdj);
@@ -3833,13 +3845,13 @@ export default function train(host) {
   function showWarn(text) {
     els.warnbox.hidden = false;
     els.warnbox.textContent = text;
-    els.hairline.style.background = 'var(--rose)';
+    els.hairline.classList.add('on');
     els.stage.classList.add('dim');
   }
 
   function clearWarn() {
     els.warnbox.hidden = true;
-    els.hairline.style.background = 'transparent';
+    els.hairline.classList.remove('on');
     els.stage.classList.remove('dim');
     lostShown = false;
   }
@@ -4135,13 +4147,6 @@ git remote get-url origin >/dev/null 2>&1 || git remote add origin "https://gith
 
 bash tools/build-stamp.sh
 
-if ! gh api "repos/$USER_LOGIN/$REPO_NAME/pages" >/dev/null 2>&1; then
-  echo "enabling GitHub Pages (branch $BRANCH, /)"
-  printf '{"source":{"branch":"%s","path":"/"},"message":"enable pages"}' "$BRANCH" \
-    | gh api --method POST "repos/$USER_LOGIN/$REPO_NAME/pages" --input - >/dev/null \
-    || echo "  (could not enable Pages automatically — turn it on at Settings ▸ Pages, branch $BRANCH, folder /)"
-fi
-
 git add -A
 if git diff --cached --quiet; then
   echo "nothing new to commit"
@@ -4150,6 +4155,13 @@ else
   echo "committed: $MSG"
 fi
 git push -q -u origin "$BRANCH"
+
+if ! gh api "repos/$USER_LOGIN/$REPO_NAME/pages" >/dev/null 2>&1; then
+  echo "enabling GitHub Pages (branch $BRANCH, /)"
+  printf '{"source":{"branch":"%s","path":"/"},"message":"enable pages"}' "$BRANCH" \
+    | gh api --method POST "repos/$USER_LOGIN/$REPO_NAME/pages" --input - >/dev/null \
+    || echo "  (could not enable Pages automatically — turn it on at Settings ▸ Pages, branch $BRANCH, folder /)"
+fi
 
 URL="https://$USER_LOGIN.github.io/$REPO_NAME/"
 echo
@@ -4194,6 +4206,351 @@ exec /usr/bin/python3 tools/serve.py "$PORT"
 __EOF_scripts_dev_sh__
 
 mkdir -p 'tests'
+cat > 'tests/counter.test.html' <<'__EOF_tests_counter_test_html__'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pushups — counter tests</title>
+<style>
+  body { background: #10131a; color: #d8dee9; font: 14px/1.5 ui-monospace, Menlo, monospace; margin: 0; padding: 16px; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p { color: #8b95a7; margin: 0 0 12px; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+  .fail { color: #ff6b6b; }
+  .pass { color: #7ee787; }
+</style>
+</head>
+<body>
+<h1>counter.test — synthetic landmark checks</h1>
+<p>Modules need http, not file:// — run <code>python3 -m http.server</code> in the project root and open
+<code>/tests/counter.test.html</code>. The same seven cases run headlessly via <code>node tests/counter.test.mjs</code>.</p>
+<pre id="out">running…</pre>
+<script type="module">
+import { Counter, angleBetween, hipOffsetOf, bodyAngleOf, elbowAngle } from '../js/counter.js';
+import { OneEuro, smoothSeries } from '../js/one-euro.js';
+
+const outEl = document.getElementById('out');
+let text = '';
+let failures = 0;
+function say(line) { text += line + '\n'; }
+function check(name, cond) {
+  if (!cond) failures++;
+  say(`${cond ? 'PASS' : 'FAIL'}  ${name}`);
+}
+function flush() {
+  outEl.innerHTML = text.split('\n').map((l) => {
+    if (l.startsWith('FAIL')) return `<span class="fail">${l}</span>`;
+    if (l.startsWith('PASS')) return `<span class="pass">${l}</span>`;
+    return l;
+  }).join('<br>');
+}
+
+const FPS = 40;
+const STEP = 1000 / FPS;
+const L = 0.37;
+const ANKLE = { x: 0.72, y: 0.53 };
+const HIP_X = 0.5;
+const WRIST_R = 0.12;
+
+// Same generator as counter.test.mjs — a plausible side-view plank whose landmarks really produce
+// the requested elbow angle, hip offset and body tilt.
+function makeLandmarks({ angle, depth = 0, hipOff = 0, tilt = null, vis = 0.95 }) {
+  const phi = ((tilt === null ? 3 + 7 * depth : tilt)) * Math.PI / 180;
+  const S = { x: ANKLE.x - L * Math.cos(phi), y: ANKLE.y + L * Math.sin(phi) };
+  const dx = ANKLE.x - S.x;
+  const dy = ANKLE.y - S.y;
+  const len = Math.hypot(dx, dy);
+  let nx = -dy, ny = dx;
+  if (ny < 0) { nx = -nx; ny = -ny; }
+  const hipY = S.y + (hipOff * len * len - (HIP_X - S.x) * nx) / ny;
+  const H = { x: HIP_X, y: hipY };
+  const K = { x: S.x + 0.78 * dx, y: S.y + 0.78 * dy };
+  const E = { x: S.x + 0.06, y: S.y + 0.11 };
+  let ux = S.x - E.x, uy = S.y - E.y;
+  const um = Math.hypot(ux, uy);
+  ux /= um; uy /= um;
+  const th = angle * Math.PI / 180;
+  const W = {
+    x: E.x + WRIST_R * (ux * Math.cos(th) - uy * Math.sin(th)),
+    y: E.y + WRIST_R * (ux * Math.sin(th) + uy * Math.cos(th)),
+  };
+  const N = { x: S.x - 0.05, y: S.y - 0.02 };
+  const lm = Array.from({ length: 33 }, () => ({ x: 0, y: 0, z: 0, visibility: 0 }));
+  const put = (i, p, v) => { lm[i] = { x: p.x, y: p.y, z: 0, visibility: v }; };
+  for (const [li, ri, p] of [[11, 12, S], [13, 14, E], [15, 16, W], [23, 24, H], [25, 26, K], [27, 28, ANKLE]]) {
+    put(li, p, vis); put(ri, p, vis * 0.97);
+  }
+  put(0, N, vis);
+  return lm;
+}
+
+function makeFrame(opts) {
+  const landmarks = makeLandmarks(opts);
+  const visVals = [11, 12, 13, 14, 15, 16, 23, 24].map((i) => landmarks[i].visibility);
+  const quality = visVals.reduce((a, b) => a + b, 0) / visVals.length;
+  return { landmarks, present: opts.present !== false, quality, fps: FPS };
+}
+
+function repFrames(t0, count, { topAngle = 178, bottomAngle = 92, downMs = 800, upMs = 700, topDwellMs = 300 } = {}) {
+  const frames = [];
+  let t = t0;
+  const downN = Math.round(downMs / STEP);
+  const upN = Math.round(upMs / STEP);
+  const dwellN = Math.round(topDwellMs / STEP);
+  for (let r = 0; r < count; r++) {
+    for (let i = 1; i <= downN; i++) { const k = i / downN; frames.push({ t, opt: { angle: topAngle + (bottomAngle - topAngle) * k, depth: k } }); t += STEP; }
+    for (let i = 1; i <= upN; i++) { const k = i / upN; frames.push({ t, opt: { angle: bottomAngle + (topAngle - bottomAngle) * k, depth: 1 - k } }); t += STEP; }
+    for (let i = 0; i < dwellN; i++) { frames.push({ t, opt: { angle: topAngle, depth: 0 } }); t += STEP; }
+  }
+  return { frames, tEnd: t };
+}
+
+function holdFrames(t0, count, opts = {}) {
+  const out = [];
+  let t = t0;
+  for (let i = 0; i < count; i++) { out.push({ t, opt: { angle: 178, depth: 0, ...opts } }); t += STEP; }
+  return { frames: out, tEnd: t };
+}
+
+function run(c, specList) {
+  let last = null;
+  const reps = [];
+  for (const { t, opt, present } of specList) {
+    last = c.addFrame(t, makeFrame(present === false ? { ...opt, present: false } : opt));
+    for (const e of last.events) if (e.type === 'rep') reps.push(e.data);
+  }
+  return { ...last, allReps: reps };
+}
+
+function freshCounter(extra = {}) {
+  return new Counter({ top: 155, bottom: 100, minRepMs: 400, cleanOnly: false, secondarySignal: 'assist', ...extra });
+}
+
+function arm(c, t0) {
+  const { frames, tEnd } = holdFrames(t0, Math.ceil(3000 / STEP) + 20);
+  return { out: run(c, frames), t: tEnd };
+}
+
+function rampSpec(c, t0, legs, tailHold = 12) {
+  const spec = [];
+  let t = t0;
+  for (const [from, to, d0, d1, ms] of legs) {
+    const n = Math.round(ms / STEP);
+    for (let i = 1; i <= n; i++) {
+      const k = i / n;
+      spec.push({ t, opt: { angle: from + (to - from) * k, depth: d0 + (d1 - d0) * k } });
+      t += STEP;
+    }
+  }
+  for (let i = 0; i < tailHold; i++) spec.push({ t, opt: { angle: 178, depth: 0 } });
+  return run(c, spec);
+}
+
+/* generator sanity */
+{
+  const lm = makeLandmarks({ angle: 123, depth: 0.5, hipOff: 0.09 });
+  check('generator: landmarks produce the requested elbow angle', Math.abs(elbowAngle(lm, 'left') - 123) < 0.5);
+  check('generator: requested hip offset is reproduced', Math.abs(hipOffsetOf(lm, 'left') - 0.09) < 0.005);
+  check('generator: sag is POSITIVE', hipOffsetOf(makeLandmarks({ angle: 160, hipOff: 0.2 }), 'left') > 0);
+  check('generator: pike is NEGATIVE', hipOffsetOf(makeLandmarks({ angle: 160, hipOff: -0.2 }), 'left') < 0);
+  check('generator: flat plank has a small body angle', Math.abs(bodyAngleOf(makeLandmarks({ angle: 178 }), 'left')) < 12);
+  check('generator: 45 deg tilt reads 45 deg', Math.abs(bodyAngleOf(makeLandmarks({ angle: 178, tilt: 45 }), 'left') - 45) < 0.5);
+  check('helper: angleBetween', Math.abs(angleBetween({ x: 0, y: 1 }, { x: 0, y: 0 }, { x: 1, y: 0 }) - 90) < 1e-9);
+  const flat = new OneEuro().filter(0, 5);
+  check('oneEuro: first sample passes through raw', flat === 5);
+  const s = smoothSeries([[0, 1], [25, 1], [50, 9]], { minCutoff: 1.1, beta: 0.02 });
+  check('smoothSeries: returns the same length', s.length === 3 && s[0][1] === 1);
+}
+
+/* 1. ten clean full-depth reps */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  check('setup: plank arms after 3s of valid frames', a.out.armed === true && a.out.reps === 0);
+  const out = run(c, repFrames(a.t, 10).frames);
+  const last = out.allReps.length ? out.allReps[out.allReps.length - 1] : null;
+  say('      T1: reps=' + out.reps + ' clean=' + out.cleanReps + ' detected=' + out.repsDetected
+    + ' state=' + out.state + ' side=' + out.side
+    + ' flags=' + JSON.stringify(out.allReps.map((r) => r.flags))
+    + ' minElbow=' + (last ? last.minElbow.toFixed(1) : '-')
+    + ' duration=' + (last ? Math.round(last.durationMs) : '-')
+    + ' shoulderDrop=' + (last ? last.shoulderDrop.toFixed(3) : '-'));
+  check('T1 ten clean reps -> reps=10', out.reps === 10);
+  check('T1 repsDetected=10 and cleanReps=10', out.repsDetected === 10 && out.cleanReps === 10);
+  check('T1 zero flags on every rep', out.allReps.length === 10 && out.allReps.every((r) => r.flags.length === 0));
+}
+
+/* 2. walking into frame */
+{
+  const c = freshCounter();
+  const spec = [];
+  let t = 0;
+  const n = Math.round(2000 / STEP);
+  for (let i = 0; i < n; i++) {
+    spec.push({ t, opt: { angle: 178 - 120 * Math.sin((i / n) * Math.PI), depth: i / n }, present: false });
+    t += STEP;
+  }
+  for (let i = 0; i < Math.round(1000 / STEP); i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  for (const f of repFrames(t, 1, { downMs: 400, upMs: 400 }).frames) spec.push(f);
+  for (let i = 0; i < Math.round(2000 / STEP); i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  const out = run(c, spec);
+  say('      T2: reps=' + out.reps + ' detected=' + out.repsDetected + ' armed=' + out.armed + ' reasons=' + JSON.stringify(out.plank.reasons));
+  check('T2 rep shape before the arm lock -> 0 reps', out.reps === 0 && out.repsDetected === 0 && out.cleanReps === 0);
+}
+
+/* 3. kneeling / resting after 5 reps */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  run(c, repFrames(a.t, 5).frames);
+  check('T3 five reps counted before the rest', c.reps === 5);
+  let sawArmBreak = false;
+  let t = a.t + 300;
+  for (let i = 0; i < 60; i++) {
+    const out = c.addFrame(t, makeFrame({ angle: 170, depth: 0, tilt: 45 }));
+    if (out.events.some((e) => e.type === 'armBreak')) sawArmBreak = true;
+    t += STEP;
+  }
+  say('      T3: reps=' + c.reps + ' detected=' + c.repsDetected + ' armed=' + c.armed + ' state=' + c.state);
+  check('T3 kneeling emits armBreak', sawArmBreak);
+  check('T3 kneeling adds zero reps', c.reps === 5);
+  check('T3 counter disarms and stays idle', c.armed === false && c.state === 'idle');
+}
+
+/* 4. double beat at the bottom counts one */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const out = rampSpec(c, a.t, [[178, 90, 1, 1, 800], [90, 105, 1, 0.85, 300], [105, 92, 0.85, 1, 300], [92, 178, 1, 0, 700]], 16);
+  say('      T4: reps=' + out.reps + ' detected=' + out.repsDetected + ' flags=' + JSON.stringify(out.allReps.map((r) => r.flags)));
+  check('T4 double beat at the bottom counts ONE rep', out.reps === 1 && out.repsDetected === 1);
+}
+
+/* 5. shallow rep, bottom=100, bottoms at 118 */
+{
+  // documented rule: a descent counts if it either reaches `bottom` on the smoothed angle, or
+  // proves depth with shoulder travel >= 0.10 (assist/confirm). minElbow > bottom then flags 'half'.
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const noTravel = rampSpec(c, a.t, [[178, 118, 0, 0.1, 800], [118, 178, 0.1, 0, 700]]);
+  say('      T5a shallow, no travel: reps=' + noTravel.reps + ' detected=' + noTravel.repsDetected);
+  check('T5a shallow without shoulder travel counts 0', noTravel.reps === 0 && noTravel.repsDetected === 0);
+
+  // T5a used 32+28+12 frames at 25 ms; start T5b after that window
+  const withTravel = rampSpec(c, a.t + 2000, [[178, 118, 0, 1, 800], [118, 178, 1, 0, 700]]);
+  const rep = withTravel.allReps.length ? withTravel.allReps[withTravel.allReps.length - 1] : null;
+  say('      T5b shallow, real travel: reps=' + c.reps + ' detected=' + c.repsDetected
+    + ' flags=' + JSON.stringify(rep ? rep.flags : null)
+    + ' minElbow=' + (rep ? rep.minElbow.toFixed(1) : '-')
+    + ' shoulderDrop=' + (rep ? rep.shoulderDrop.toFixed(3) : '-'));
+  check('T5b shallow-with-travel counts a rep and flags it half', !!rep && rep.flags.includes('half'));
+
+  const c2 = freshCounter({ cleanOnly: true });
+  const a2 = arm(c2, 0);
+  const o2 = rampSpec(c2, a2.t, [[178, 118, 0, 1, 800], [118, 178, 1, 0, 700]]);
+  say('      T5c cleanOnly: reps=' + o2.reps + ' detected=' + o2.repsDetected + ' clean=' + o2.cleanReps);
+  check('T5c cleanOnly keeps flagged reps out of `reps` but keeps repsDetected', o2.reps === 0 && o2.repsDetected === 1 && o2.cleanReps === 0);
+}
+
+/* 6. sagging hips */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const spec = [];
+  let t = a.t;
+  const downN = Math.round(800 / STEP);
+  for (let i = 1; i <= downN; i++) {
+    const k = i / downN;
+    const opt = { angle: 178 + (92 - 178) * k, depth: k };
+    if (i >= 14 && i <= 18) opt.hipOff = 0.25;
+    spec.push({ t, opt });
+    t += STEP;
+  }
+  const upN = Math.round(700 / STEP);
+  for (let i = 1; i <= upN; i++) { const k = i / upN; spec.push({ t, opt: { angle: 92 + (178 - 92) * k, depth: 1 - k } }); t += STEP; }
+  for (let i = 0; i < 12; i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  const out = run(c, spec);
+  const rep = out.allReps.length ? out.allReps[out.allReps.length - 1] : null;
+  say('      T6: reps=' + out.reps + ' flags=' + JSON.stringify(rep ? rep.flags : null)
+    + ' hipMax=' + (rep && rep.hipMax !== null ? rep.hipMax.toFixed(3) : '-') + ' armed=' + out.armed);
+  check('T6 sag excursion flags the rep', out.reps === 1 && !!rep && rep.flags.includes('sag'));
+  check('T6 a brief sag does not break the arm lock', c.armed === true);
+}
+
+/* 7. minRepMs rejects a bounce */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const spec = [];
+  let t = a.t;
+  for (const [from, to, ms] of [[178, 92, 75], [92, 178, 75]]) {
+    const n = Math.max(1, Math.round(ms / STEP));
+    for (let i = 1; i <= n; i++) { spec.push({ t, opt: { angle: from + (to - from) * (i / n), depth: to < from ? 1 : 0 } }); t += STEP; }
+  }
+  for (let i = 0; i < 20; i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  const out = run(c, spec);
+  say('      T7: reps=' + out.reps + ' detected=' + out.repsDetected + ' state=' + out.state + ' armed=' + out.armed);
+  check('T7 150 ms bounce rejected (minRepMs=400)', out.reps === 0 && out.repsDetected === 0);
+
+  const c2 = freshCounter({ minRepMs: 2200 });
+  const a2 = arm(c2, 0);
+  const slow = rampSpec(c2, a2.t, [[178, 92, 0, 1, 800], [92, 178, 1, 0, 700]]);
+  const c3 = freshCounter();
+  const a3 = arm(c3, 0);
+  const same = run(c3, repFrames(a3.t, 1).frames);
+  say('      T7b: minRepMs=2200 -> reps=' + slow.reps + ' | minRepMs=400 same rep -> reps=' + same.reps
+    + ' duration=' + (same.allReps[0] ? Math.round(same.allReps[0].durationMs) : '-'));
+  check('T7b duration gate rejects a 1500 ms rep when minRepMs=2200', slow.reps === 0 && slow.repsDetected === 0);
+  check('T7c the same rep counts when minRepMs=400', same.reps === 1);
+}
+
+/* extras: notSide, lost pose, lockout, reset, bad frames */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const out = c.addFrame(a.t, makeFrame({ angle: 178, depth: 0, tilt: 80 }));
+  say('      extra: tilt 80 -> reasons=' + JSON.stringify(out.plank.reasons) + ' bodyAngle=' + out.bodyAngle.toFixed(1));
+  check('extra: steep tilt reports bodyAngle', out.plank.reasons.includes('bodyAngle'));
+
+  const c2 = freshCounter();
+  const a2 = arm(c2, 0);
+  let sawBreak = false;
+  for (let i = 0; i < 5; i++) {
+    const o = c2.addFrame(a2.t + i * STEP, makeFrame({ angle: 178, present: false }));
+    if (o.events.some((e) => e.type === 'armBreak')) sawBreak = true;
+  }
+  check('extra: losing the pose while armed emits armBreak', sawBreak && c2.armed === false);
+
+  const c3 = freshCounter();
+  const a3 = arm(c3, 0);
+  const o3 = rampSpec(c3, a3.t, [[178, 92, 0, 1, 800], [92, 148, 1, 0.45, 500], [148, 92, 0.45, 1, 500], [92, 178, 1, 0, 700]]);
+  say('      extra lockout: reps=' + o3.reps + ' flags=' + JSON.stringify(o3.allReps.map((r) => r.flags)));
+  check('extra: incomplete lockout counts and is flagged', o3.reps === 2 && o3.allReps[0].flags.includes('lockout'));
+
+  const c4 = freshCounter();
+  const a4 = arm(c4, 0);
+  run(c4, repFrames(a4.t, 3).frames);
+  check('extra: reps counted before reset', c4.reps === 3);
+  c4.reset('test');
+  check('extra: reset zeros counts and state', c4.reps === 0 && c4.repsDetected === 0 && c4.cleanReps === 0 && c4.state === 'idle' && c4.armed === false && c4.trace.length === 0);
+
+  const o5 = c4.addFrame(0, { landmarks: null, present: true, quality: 0, fps: 30 });
+  check('extra: malformed frame does not throw', o5 && o5.reps === 0 && o5.plank.reasons.includes('noPose'));
+  const o6 = c4.addFrame(1, { landmarks: new Array(10).fill({ x: 0.5, y: 0.5, z: 0, visibility: 1 }), present: true, quality: 1, fps: 30 });
+  check('extra: short landmark array treated as noPose', o6.plank.reasons.includes('noPose'));
+  check('extra: trace is capped at 45 frames', c4.trace.length <= 45);
+}
+
+say('');
+say(failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`);
+flush();
+</script>
+</body>
+</html>
+__EOF_tests_counter_test_html__
+
+mkdir -p 'tests'
 cat > 'tests/counter.test.mjs' <<'__EOF_tests_counter_test_mjs__'
 // node tests/counter.test.mjs
 import { Counter, angleBetween, hipOffsetOf, bodyAngleOf, elbowAngle } from '../js/counter.js';
@@ -4224,9 +4581,7 @@ function makeLandmarks({ angle, depth = 0, hipOff = 0, tilt = null, vis = 0.95 }
   const len = Math.hypot(dx, dy);
   let nx = -dy, ny = dx;
   if (ny < 0) { nx = -nx; ny = -ny; }
-  const t = (HIP_X - S.x) / dx;
   const hipY = S.y + (hipOff * len * len - (HIP_X - S.x) * nx) / ny;
-  void t;
   const H = { x: HIP_X, y: hipY };
   const K = { x: S.x + 0.78 * dx, y: S.y + 0.78 * dy };
 
@@ -4257,8 +4612,8 @@ function makeFrame(opts) {
   return { landmarks, present: opts.present !== false, quality, fps: FPS };
 }
 
-// angle/depth schedule for one full rep
-function repFrames(t0, count, { topAngle = 178, bottomAngle = 92, downMs = 800, upMs = 700, topDwellMs = 300, depthFromAngle = true, forceDepth = null, hipSagFrames = null } = {}) {
+// angle/depth schedule for one full rep; depth follows the elbow angle the way a real plank does
+function repFrames(t0, count, { topAngle = 178, bottomAngle = 92, downMs = 800, upMs = 700, topDwellMs = 300 } = {}) {
   const frames = [];
   let t = t0;
   const downN = Math.round(downMs / STEP);
@@ -4266,17 +4621,13 @@ function repFrames(t0, count, { topAngle = 178, bottomAngle = 92, downMs = 800, 
   const dwellN = Math.round(topDwellMs / STEP);
   for (let r = 0; r < count; r++) {
     for (let i = 1; i <= downN; i++) {
-      const a = topAngle + (bottomAngle - topAngle) * (i / downN);
-      const d = depthFromAngle ? (topAngle - a) / (topAngle - bottomAngle) : forceDepth * (i / downN);
-      const opt = { angle: a, depth: Math.max(0, Math.min(1, d)) };
-      if (hipSagFrames && i > hipSagFrames.start && i <= hipSagFrames.end) opt.hipOff = hipSagFrames.value;
-      frames.push({ t, opt });
+      const k = i / downN;
+      frames.push({ t, opt: { angle: topAngle + (bottomAngle - topAngle) * k, depth: k } });
       t += STEP;
     }
     for (let i = 1; i <= upN; i++) {
-      const a = bottomAngle + (topAngle - bottomAngle) * (i / upN);
-      const d = depthFromAngle ? (topAngle - a) / (topAngle - bottomAngle) : forceDepth * (1 - i / upN);
-      frames.push({ t, opt: { angle: a, depth: Math.max(0, Math.min(1, d)) } });
+      const k = i / upN;
+      frames.push({ t, opt: { angle: bottomAngle + (topAngle - bottomAngle) * k, depth: 1 - k } });
       t += STEP;
     }
     for (let i = 0; i < dwellN; i++) {
@@ -4297,16 +4648,14 @@ function holdFrames(t0, count, opts = {}) {
 function run(c, specList) {
   let last = null;
   const reps = [];
-  let armBreaks = 0;
   for (const { t, opt, present } of specList) {
     const o = present === false ? { ...opt, present: false } : opt;
     last = c.addFrame(t, makeFrame(o));
     for (const e of last.events) {
       if (e.type === 'rep') reps.push(e.data);
-      else armBreaks++;
     }
   }
-  return { ...last, allReps: reps, armBreaks };
+  return { ...last, allReps: reps };
 }
 
 function freshCounter(extra = {}) {
@@ -4363,8 +4712,9 @@ function arm(c, t0) {
   }
   // now a valid plank, held for 2 s (still under the 2.5 s arm hold) with one more rep shape
   for (let i = 0; i < Math.round(1000 / STEP); i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
-  for (const f of repFrames(t, 1, { downMs: 400, upMs: 400 }).frames) spec.push(f);
-  t += repFrames(t, 1, { downMs: 400, upMs: 400 }).tEnd - t;
+  const one = repFrames(t, 1, { downMs: 400, upMs: 400 });
+  for (const f of one.frames) spec.push(f);
+  t = one.tEnd;
   for (let i = 0; i < Math.round(2000 / STEP); i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
   const out = run(c, spec);
   check('T2 walking in + rep shape before arm -> 0 reps', out.reps === 0 && out.repsDetected === 0 && out.cleanReps === 0);
@@ -4377,7 +4727,6 @@ function arm(c, t0) {
   const c = freshCounter();
   const a = arm(c, 0);
   run(c, repFrames(a.t, 5).frames);
-  const before = { ...a };
   const afterReps = c.reps;
   check('T3 five reps counted before the rest', afterReps === 5);
   let sawArmBreak = false;
@@ -4390,7 +4739,7 @@ function arm(c, t0) {
   check('T3 kneeling emits armBreak', sawArmBreak);
   check('T3 kneeling adds zero reps', c.reps === 5);
   check('T3 counter disarms and stays idle', c.armed === false && c.state === 'idle');
-  console.log('T3 before=' + JSON.stringify({ reps: before.out ? before.out.reps : null }) + ' now=' + c.reps + ' detected=' + c.repsDetected);
+  console.log('      T3 detail: reps=' + c.reps + ' detected=' + c.repsDetected + ' armed=' + c.armed + ' state=' + c.state);
 }
 
 /* ---------- 4. double beat at the bottom counts one ---------- */
@@ -4483,7 +4832,7 @@ function arm(c, t0) {
   ramp3(118, 178, 1, 0, 700);
   for (let i = 0; i < 12; i++) { spec3.push({ t: t3, opt: { angle: 178, depth: 0 } }); }
   const out2 = run(c2, spec3);
-  console.log('      T5c cleanOnly: reps=' + out2.reps + ' detected=' + out2.repsDetected + ' clean=' + out2.cleanReps + ' flags=' + JSON.stringify(out2.trace.length ? null : null));
+  console.log('      T5c cleanOnly: reps=' + out2.reps + ' detected=' + out2.repsDetected + ' clean=' + out2.cleanReps);
   check('T5c cleanOnly keeps flagged reps out of `reps` but keeps repsDetected', out2.reps === 0 && out2.repsDetected === 1 && out2.cleanReps === 0);
 }
 
@@ -4555,7 +4904,7 @@ function arm(c, t0) {
   const c3 = freshCounter();
   const a3 = arm(c3, 0);
   const out3 = run(c3, repFrames(a3.t, 1).frames);
-  console.log('      T7b detail: minRepMs=2200 -> reps=' + out2.reps + ' detected=' + out2.repsDetected + ' | minRepMs=400 same rep -> reps=' + out3.reps + ' duration=' + (out3.lastRep ? Math.round(out3.lastRep.durationMs) : '-'));
+  console.log('      T7b detail: minRepMs=2200 -> reps=' + out2.reps + ' detected=' + out2.repsDetected + ' | minRepMs=400 same rep -> reps=' + out3.reps + ' duration=' + (out3.allReps.length ? Math.round(out3.allReps[0].durationMs) : '-'));
   check('T7b duration gate rejects a 1500 ms rep when minRepMs=2200', out2.reps === 0 && out2.repsDetected === 0);
   check('T7c the same rep counts when minRepMs=400', out3.reps === 1);
 }
@@ -4589,6 +4938,61 @@ function arm(c, t0) {
   check('extra: malformed frame does not throw', out4 && out4.reps === 0 && out4.plank.reasons.includes('noPose'));
   const out5 = c3.addFrame(1, { landmarks: new Array(10).fill({ x: 0.5, y: 0.5, z: 0, visibility: 1 }), present: true, quality: 1, fps: 30 });
   check('extra: short landmark array treated as noPose', out5.plank.reasons.includes('noPose'));
+}
+
+/* ---------- extra: lockout reversal, partial ascent discard, shoulder-travel maths ---------- */
+{
+  // rises to 148 (inside [top-12, top)) then descends again -> counts, flagged 'lockout'
+  const c = freshCounter();
+  const a = arm(c, 0);
+  let t = a.t;
+  const spec = [];
+  const ramp = (from, to, d0, d1, ms) => {
+    const n = Math.round(ms / STEP);
+    for (let i = 1; i <= n; i++) {
+      const k = i / n;
+      spec.push({ t, opt: { angle: from + (to - from) * k, depth: d0 + (d1 - d0) * k } });
+      t += STEP;
+    }
+  };
+  ramp(178, 92, 0, 1, 800);
+  ramp(92, 148, 1, 0.45, 500);
+  ramp(148, 92, 0.45, 1, 500);
+  ramp(92, 178, 1, 0, 700);
+  for (let i = 0; i < 12; i++) spec.push({ t, opt: { angle: 178, depth: 0 } });
+  const out = run(c, spec);
+  console.log('      extra lockout: reps=' + out.reps + ' detected=' + out.repsDetected + ' flags=' + JSON.stringify(out.allReps.map((r) => r.flags)));
+  check('extra: incomplete lockout counts and is flagged', out.reps === 2 && out.allReps[0].flags.includes('lockout'));
+
+  // rises only to 130 (well short of top-12) -> not a rep at all
+  const c2 = freshCounter();
+  const a2 = arm(c2, 0);
+  let t2 = a2.t;
+  const spec2 = [];
+  const ramp2 = (from, to, d0, d1, ms) => {
+    const n = Math.round(ms / STEP);
+    for (let i = 1; i <= n; i++) {
+      const k = i / n;
+      spec2.push({ t: t2, opt: { angle: from + (to - from) * k, depth: d0 + (d1 - d0) * k } });
+      t2 += STEP;
+    }
+  };
+  ramp2(178, 92, 0, 1, 800);
+  ramp2(92, 130, 1, 0.6, 500);
+  ramp2(130, 92, 0.6, 1, 500);
+  ramp2(92, 178, 1, 0, 700);
+  for (let i = 0; i < 12; i++) spec2.push({ t: t2, opt: { angle: 178, depth: 0 } });
+  const out2 = run(c2, spec2);
+  console.log('      extra short-ascent: reps=' + out2.reps + ' detected=' + out2.repsDetected + ' (the two half-movements merge into one rep)');
+  check('extra: reversing short of top-12 is not a rep on its own', out2.repsDetected <= 1);
+
+  // shoulder travel of a proper side-on rep lands in the documented 0.10-0.25 band
+  const c3 = freshCounter();
+  const a3 = arm(c3, 0);
+  const out3 = run(c3, repFrames(a3.t, 3).frames);
+  const drops = out3.allReps.map((r) => +r.shoulderDrop.toFixed(3));
+  console.log('      extra travel: shoulderDrop per rep = ' + JSON.stringify(drops));
+  check('extra: full-depth reps report 0.10-0.25 of normalised shoulder travel', drops.length === 3 && drops.every((d) => d >= 0.10 && d <= 0.25));
 }
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`);
@@ -4863,6 +5267,120 @@ def main():
 if __name__ == "__main__":
     main()
 __EOF_tools_serve_py__
+
+mkdir -p 'tools'
+cat > 'tools/shots.mjs' <<'__EOF_tools_shots_mjs__'
+// UI screenshot harness: headless Chrome at iPhone metrics, driven over CDP.
+//   node tools/shots.mjs <url> <out.png> [--dark] [--light] [--step <js>] [--wait <ms>] [--click <selector>]
+// Chrome flags include a fake camera device, so #/train reaches the real setup layout.
+import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const PORT = 9333;
+const W = 402, H = 874;
+const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+const argv = process.argv.slice(2);
+const url = argv.shift();
+const out = argv.shift();
+if (!url || !out) {
+  console.error('usage: node tools/shots.mjs <url> <out.png> [--dark] [--step <js>] [--click <sel>] [--wait <ms>]');
+  process.exit(2);
+}
+const steps = [];
+let scheme = '';
+while (argv.length) {
+  const f = argv.shift();
+  if (f === '--dark') scheme = 'dark';
+  else if (f === '--light') scheme = 'light';
+  else if (f === '--step' || f === '--click' || f === '--wait') steps.push([f.slice(2), argv.shift()]);
+  else throw new Error('unknown flag ' + f);
+}
+
+const profile = join(tmpdir(), 'pushups-shot-profile');
+const chrome = spawn(CHROME, [
+  '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
+  `--window-size=${W},${H}`, `--user-agent=${UA}`,
+  '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
+  '--hide-scrollbars', '--allow-running-insecure-content', '--mute-audio',
+  'about:blank',
+], { stdio: ['ignore', 'ignore', 'pipe'] });
+let chromeErr = '';
+chrome.stderr.on('data', (d) => { chromeErr += d.toString(); });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function target() {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+      const page = list.find((t) => t.type === 'page');
+      if (page) return page;
+    } catch { /* still starting */ }
+    await sleep(250);
+  }
+  throw new Error('chrome did not start:\n' + chromeErr.slice(-2000));
+}
+
+let id = 0;
+const pending = new Map();
+let ws;
+function send(method, params = {}) {
+  const msgId = ++id;
+  ws.send(JSON.stringify({ id: msgId, method, params }));
+  return new Promise((resolve, reject) => pending.set(msgId, { resolve, reject }));
+}
+
+const page = await target();
+ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+ws.onmessage = (ev) => {
+  const m = JSON.parse(ev.data);
+  if (m.id && pending.has(m.id)) {
+    const { resolve, reject } = pending.get(m.id);
+    pending.delete(m.id);
+    if (m.error) reject(new Error(m.error.message)); else resolve(m.result);
+  } else if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') {
+    console.error('  [console]', m.params.entry.text);
+  } else if (m.method === 'Runtime.exceptionThrown') {
+    const d = m.params.exceptionDetails;
+    console.error('  [exception]', d.exception?.description || d.text);
+  }
+};
+
+await send('Page.enable');
+await send('Runtime.enable');
+await send('Log.enable');
+await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: true });
+await send('Network.setUserAgentOverride', { userAgent: UA });
+if (scheme) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+await send('Page.navigate', { url });
+await sleep(3500);
+
+for (const [kind, arg] of steps) {
+  if (kind === 'wait') { await sleep(Number(arg)); continue; }
+  const expr = kind === 'click'
+    ? `(() => { const el = document.querySelector(${JSON.stringify(arg)}); if (!el) throw new Error('no element ' + ${JSON.stringify(arg)}); el.click(); return 'clicked'; })()`
+    : `String(${arg})`;
+  const res = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+  if (res.exceptionDetails) {
+    console.error('  [step failed]', arg, res.exceptionDetails.exception?.description || '');
+  } else if (process.env.SHOW_STEPS) {
+    console.log('  [step]', arg, '=>', res.result?.value);
+  }
+  await sleep(700);
+}
+
+const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+writeFileSync(out, Buffer.from(shot.data, 'base64'));
+console.log('wrote', out);
+ws.close();
+chrome.kill();
+process.exit(0);
+__EOF_tools_shots_mjs__
 
 mkdir -p 'tools'
 cat > 'tools/sw.template.js' <<'__EOF_tools_sw_template_js__'

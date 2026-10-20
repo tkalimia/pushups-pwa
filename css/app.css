@@ -13,7 +13,7 @@
   --sheet:#13211F;
   --text:#DCE6E2;
   --muted:#7F918C;
-  --hair:rgba(220,230,226,.14);
+  --hair:rgba(220,230,226,.12);
   --tint:rgba(220,230,226,.05);
   --num:#DCE6E2;
 
@@ -33,7 +33,7 @@
     --sheet:#F2F5F2;
     --text:#0E1A18;
     --muted:#5B6965;
-    --hair:rgba(14,26,24,.16);
+    --hair:rgba(14,26,24,.11);
     --tint:rgba(14,26,24,.045);
     --num:#0E1A18;
   }
@@ -66,7 +66,8 @@ a{color:inherit;text-decoration:none}
   padding:7px 2px calc(7px + var(--sab));background:var(--sheet);border-top:1px solid var(--hair);
   font-size:11px;line-height:1.05;text-align:center;z-index:60}
 #tabs a{flex:1;color:var(--muted);transition:color .15s linear}
-#tabs a .ic{display:block;font-size:16px;margin-bottom:3px}
+#tabs a .ic{display:block;height:20px;margin-bottom:4px}
+#tabs a .ic svg{width:19px;height:19px;display:block;margin:0 auto}
 #tabs a[aria-current="true"]{color:var(--text)}
 #tabs a.todo{opacity:.45}
 
@@ -85,11 +86,13 @@ a{color:inherit;text-decoration:none}
 .btn-big{width:100%;padding:17px;font-size:17px}
 .btn[disabled]{opacity:.4}
 .step{width:76px;height:60px;border-radius:14px;background:var(--tint);border:1px solid var(--hair);
-  font:700 30px/1 var(--display);color:var(--text)}
+  font:700 30px/1 var(--display);color:var(--text);display:inline-flex;align-items:center;justify-content:center}
 .step:active{background:var(--hair)}
 select,input[type=text],input[type=number],textarea{background:var(--tint);border:1px solid var(--hair);
   border-radius:10px;padding:10px 12px;width:100%;appearance:none}
-input[type=range]{width:100%}
+select{padding-right:30px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%237F918C' stroke-width='1.8' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 11px center}
+input[type=range]{width:100%;accent-color:var(--track);height:28px}
 input[type=checkbox]{width:22px;height:22px;accent-color:var(--track)}
 label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;
   border-bottom:1px solid var(--hair);font-size:15px}
@@ -112,7 +115,7 @@ label.tog .sub{display:block;font-size:12px}
 .statusbar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--hair);font-size:13px}
 .statusbar .bar{flex:1}
 .bar{height:5px;background:var(--tint);border-radius:3px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--track);transition:width .3s linear}
+.bar i{display:block;height:100%;width:0;background:var(--track);transition:width .3s linear}
 .bar i.bad{background:var(--rose)}
 .chk{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px}
 .chk .mk{width:16px;flex:none;text-align:center;font-weight:700;color:var(--muted)}
@@ -126,12 +129,14 @@ label.tog .sub{display:block;font-size:12px}
 
 /* ── counter ── */
 .counter{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
-.counter .camwrap{flex:none;height:26%}
+.counter[data-phase="setup"] .camwrap{flex:none;height:42%}
+.counter[data-phase="set"] .camwrap,.counter[data-phase="countdown"] .camwrap{flex:none;height:26%}
+.counter[data-phase="summary"] .camwrap{display:none}
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   transition:opacity .25s linear}
 .stage.dim{opacity:.35}
 #repnum{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
-  font-size:min(88vw,46vh,400px);line-height:.88;color:var(--num);transition:color .16s linear}
+  font-size:min(46vh,400px,calc(176vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
 #repnum.tick{color:var(--brass)}
 #cdnum{font-family:var(--display);font-weight:700;font-size:min(70vw,38vh,320px);line-height:.9;color:var(--brass)}
 #chip{font-size:14px;color:var(--muted);text-align:center;min-height:20px;margin-top:6px}
@@ -139,13 +144,15 @@ label.tog .sub{display:block;font-size:12px}
 .hairline.on{background:var(--rose)}
 .corr{display:flex;align-items:center;justify-content:center;gap:16px;padding:8px 0 4px}
 .corr .n{font:700 20px/1 var(--display);min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
-.topline{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;font-size:13px;
+.topline{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 14px;font-size:13px;
   color:var(--muted);font-variant-numeric:tabular-nums}
+.topline .clock{justify-self:start}
+.topline .endslot{justify-self:end}
 .warnbox{padding:9px 14px;background:rgba(208,86,107,.14);color:var(--rose);font-size:14px;border-top:1px solid var(--rose)}
 .warnbox[hidden]{display:none}
 
 /* ── summary ── */
-.sheet{flex:1;min-height:0;overflow:auto;background:var(--sheet);padding:14px 16px calc(16px + var(--sab))}
+.sheet{flex:1;min-height:0;align-self:stretch;overflow:auto;background:var(--sheet);padding:14px 16px calc(16px + var(--sab))}
 .finum{font:700 92px/1 var(--display);text-align:center;font-variant-numeric:tabular-nums;color:var(--num)}
 .finum input{all:unset;display:block;width:100%;text-align:center;font:inherit;color:inherit}
 .kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}

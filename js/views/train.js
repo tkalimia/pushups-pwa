@@ -51,13 +51,13 @@ export default function train(host) {
   const checkWhy = {};
 
   host.innerHTML = `
-    <div class="counter">
+    <div class="counter" data-phase="setup">
       <div class="topline">
-        <span id="clock">--:--</span>
-        <span class="grow" id="phaseLabel" style="text-align:center">set up</span>
-        <button class="btn btn-warn" id="endBtn" hidden>End</button>
+        <span id="clock" class="clock">--:--</span>
+        <span id="phaseLabel">set up</span>
+        <span class="endslot"><button class="btn btn-warn" id="endBtn" hidden>End</button></span>
       </div>
-      <div id="hairline" style="height:3px;background:transparent"></div>
+      <div class="hairline" id="hairline"></div>
       <div class="warnbox" id="warnbox" hidden></div>
       <div class="camwrap" id="camwrap">
         <video id="video" autoplay playsinline muted></video>
@@ -71,6 +71,7 @@ export default function train(host) {
   const q = (s) => host.querySelector(s);
   els.video = q('#video');
   els.overlay = q('#overlay');
+  els.root = q('.counter');
   els.camwrap = q('#camwrap');
   els.camoff = q('#camoff');
   els.stage = q('#stage');
@@ -103,8 +104,13 @@ export default function train(host) {
   }
 
   // ── setup ─────────────────────────────────────────────────────
+  function setPhase(p) {
+    phase = p;
+    els.root.dataset.phase = p;
+  }
+
   function renderSetup() {
-    phase = 'setup';
+    setPhase('setup');
     els.overlay.style.display = '';
     lastOut = EMPTY_OUT;
     els.phaseLabel.textContent = load().manualMode ? 'manual log' : 'set up';
@@ -227,7 +233,7 @@ export default function train(host) {
   }
 
   function startCountdown(n) {
-    phase = 'countdown';
+    setPhase('countdown');
     els.phaseLabel.textContent = 'into plank';
     let left = n;
     els.stage.innerHTML = `
@@ -257,7 +263,7 @@ export default function train(host) {
   }
 
   function startSet() {
-    phase = 'set';
+    setPhase('set');
     counter.reset('set-start');
     counter.setParams(params());
     counter.setArmHold(load().armHoldMs);
@@ -307,6 +313,7 @@ export default function train(host) {
   function paintCount() {
     if (!els.repnum || phase !== 'set') return;
     const n = Math.max(0, detected() + manualAdj);
+    els.repnum.style.setProperty('--nd', String(n).length);
     if (els.repnum.textContent !== String(n)) {
       els.repnum.textContent = String(n);
       els.repnum.classList.add('tick');
@@ -322,7 +329,7 @@ export default function train(host) {
   }
 
   function startManualSet() {
-    phase = 'set';
+    setPhase('set');
     setStart = Date.now();
     lastRepAt = setStart;
     manualAdj = 0;
@@ -363,7 +370,7 @@ export default function train(host) {
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     if (phase === 'countdown') { renderSetup(); return; }
     if (phase !== 'set') return;
-    phase = 'summary';
+    setPhase('summary');
     els.endBtn.hidden = true;
     const det = detected();
     const fin = Math.max(0, det + manualAdj);
@@ -561,13 +568,13 @@ export default function train(host) {
   function showWarn(text) {
     els.warnbox.hidden = false;
     els.warnbox.textContent = text;
-    els.hairline.style.background = 'var(--rose)';
+    els.hairline.classList.add('on');
     els.stage.classList.add('dim');
   }
 
   function clearWarn() {
     els.warnbox.hidden = true;
-    els.hairline.style.background = 'transparent';
+    els.hairline.classList.remove('on');
     els.stage.classList.remove('dim');
     lostShown = false;
   }

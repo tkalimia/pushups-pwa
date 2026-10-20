@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pushups — counter tests</title>
+<style>
+  body { background: #10131a; color: #d8dee9; font: 14px/1.5 ui-monospace, Menlo, monospace; margin: 0; padding: 16px; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p { color: #8b95a7; margin: 0 0 12px; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+  .fail { color: #ff6b6b; }
+  .pass { color: #7ee787; }
+</style>
+</head>
+<body>
+<h1>counter.test — synthetic landmark checks</h1>
+<p>Modules need http, not file:// — run <code>python3 -m http.server</code> in the project root and open
+<code>/tests/counter.test.html</code>. The same seven cases run headlessly via <code>node tests/counter.test.mjs</code>.</p>
+<pre id="out">running…</pre>
+<script type="module">
+import { Counter, angleBetween, hipOffsetOf, bodyAngleOf, elbowAngle } from '../js/counter.js';
+import { OneEuro, smoothSeries } from '../js/one-euro.js';
+
+const outEl = document.getElementById('out');
+let text = '';
+let failures = 0;
+function say(line) { text += line + '\n'; }
+function check(name, cond) {
+  if (!cond) failures++;
+  say(`${cond ? 'PASS' : 'FAIL'}  ${name}`);
+}
+function flush() {
+  outEl.innerHTML = text.split('\n').map((l) => {
+    if (l.startsWith('FAIL')) return `<span class="fail">${l}</span>`;
+    if (l.startsWith('PASS')) return `<span class="pass">${l}</span>`;
+    return l;
+  }).join('<br>');
+}
+
+const FPS = 40;
+const STEP = 1000 / FPS;
+const L = 0.37;
+const ANKLE = { x: 0.72, y: 0.53 };
+const HIP_X = 0.5;
+const WRIST_R = 0.12;
+
+// Same generator as counter.test.mjs — a plausible side-view plank whose landmarks really produce
+// the requested elbow angle, hip offset and body tilt.
+function makeLandmarks({ angle, depth = 0, hipOff = 0, tilt = null, vis = 0.95 }) {
+  const phi = ((tilt === null ? 3 + 7 * depth : tilt)) * Math.PI / 180;
+  const S = { x: ANKLE.x - L * Math.cos(phi), y: ANKLE.y + L * Math.sin(phi) };
+  const dx = ANKLE.x - S.x;
+  const dy = ANKLE.y - S.y;
+  const len = Math.hypot(dx, dy);
+  let nx = -dy, ny = dx;
+  if (ny < 0) { nx = -nx; ny = -ny; }
+  const hipY = S.y + (hipOff * len * len - (HIP_X - S.x) * nx) / ny;
+  const H = { x: HIP_X, y: hipY };
+  const K = { x: S.x + 0.78 * dx, y: S.y + 0.78 * dy };
+  const E = { x: S.x + 0.06, y: S.y + 0.11 };
+  let ux = S.x - E.x, uy = S.y - E.y;
+  const um = Math.hypot(ux, uy);
+  ux /= um; uy /= um;
+  const th = angle * Math.PI / 180;
+  const W = {
+    x: E.x + WRIST_R * (ux * Math.cos(th) - uy * Math.sin(th)),
+    y: E.y + WRIST_R * (ux * Math.sin(th) + uy * Math.cos(th)),
+  };
+  const N = { x: S.x - 0.05, y: S.y - 0.02 };
+  const lm = Array.from({ length: 33 }, () => ({ x: 0, y: 0, z: 0, visibility: 0 }));
+  const put = (i, p, v) => { lm[i] = { x: p.x, y: p.y, z: 0, visibility: v }; };
+  for (const [li, ri, p] of [[11, 12, S], [13, 14, E], [15, 16, W], [23, 24, H], [25, 26, K], [27, 28, ANKLE]]) {
+    put(li, p, vis); put(ri, p, vis * 0.97);
+  }
+  put(0, N, vis);
+  return lm;
+}
+
+function makeFrame(opts) {
+  const landmarks = makeLandmarks(opts);
+  const visVals = [11, 12, 13, 14, 15, 16, 23, 24].map((i) => landmarks[i].visibility);
+  const quality = visVals.reduce((a, b) => a + b, 0) / visVals.length;
+  return { landmarks, present: opts.present !== false, quality, fps: FPS };
+}
+
+function repFrames(t0, count, { topAngle = 178, bottomAngle = 92, downMs = 800, upMs = 700, topDwellMs = 300 } = {}) {
+  const frames = [];
+  let t = t0;
+  const downN = Math.round(downMs / STEP);
+  const upN = Math.round(upMs / STEP);
+  const dwellN = Math.round(topDwellMs / STEP);
+  for (let r = 0; r < count; r++) {
+    for (let i = 1; i <= downN; i++) { const k = i / downN; frames.push({ t, opt: { angle: topAngle + (bottomAngle - topAngle) * k, depth: k } }); t += STEP; }
+    for (let i = 1; i <= upN; i++) { const k = i / upN; frames.push({ t, opt: { angle: bottomAngle + (topAngle - bottomAngle) * k, depth: 1 - k } }); t += STEP; }
+    for (let i = 0; i < dwellN; i++) { frames.push({ t, opt: { angle: topAngle, depth: 0 } }); t += STEP; }
+  }
+  return { frames, tEnd: t };
+}
+
+function holdFrames(t0, count, opts = {}) {
+  const out = [];
+  let t = t0;
+  for (let i = 0; i < count; i++) { out.push({ t, opt: { angle: 178, depth: 0, ...opts } }); t += STEP; }
+  return { frames: out, tEnd: t };
+}
+
+function run(c, specList) {
+  let last = null;
+  const reps = [];
+  for (const { t, opt, present } of specList) {
+    last = c.addFrame(t, makeFrame(present === false ? { ...opt, present: false } : opt));
+    for (const e of last.events) if (e.type === 'rep') reps.push(e.data);
+  }
+  return { ...last, allReps: reps };
+}
+
+function freshCounter(extra = {}) {
+  return new Counter({ top: 155, bottom: 100, minRepMs: 400, cleanOnly: false, secondarySignal: 'assist', ...extra });
+}
+
+function arm(c, t0) {
+  const { frames, tEnd } = holdFrames(t0, Math.ceil(3000 / STEP) + 20);
+  return { out: run(c, frames), t: tEnd };
+}
+
+function rampSpec(c, t0, legs, tailHold = 12) {
+  const spec = [];
+  let t = t0;
+  for (const [from, to, d0, d1, ms] of legs) {
+    const n = Math.round(ms / STEP);
+    for (let i = 1; i <= n; i++) {
+      const k = i / n;
+      spec.push({ t, opt: { angle: from + (to - from) * k, depth: d0 + (d1 - d0) * k } });
+      t += STEP;
+    }
+  }
+  for (let i = 0; i < tailHold; i++) spec.push({ t, opt: { angle: 178, depth: 0 } });
+  return run(c, spec);
+}
+
+/* generator sanity */
+{
+  const lm = makeLandmarks({ angle: 123, depth: 0.5, hipOff: 0.09 });
+  check('generator: landmarks produce the requested elbow angle', Math.abs(elbowAngle(lm, 'left') - 123) < 0.5);
+  check('generator: requested hip offset is reproduced', Math.abs(hipOffsetOf(lm, 'left') - 0.09) < 0.005);
+  check('generator: sag is POSITIVE', hipOffsetOf(makeLandmarks({ angle: 160, hipOff: 0.2 }), 'left') > 0);
+  check('generator: pike is NEGATIVE', hipOffsetOf(makeLandmarks({ angle: 160, hipOff: -0.2 }), 'left') < 0);
+  check('generator: flat plank has a small body angle', Math.abs(bodyAngleOf(makeLandmarks({ angle: 178 }), 'left')) < 12);
+  check('generator: 45 deg tilt reads 45 deg', Math.abs(bodyAngleOf(makeLandmarks({ angle: 178, tilt: 45 }), 'left') - 45) < 0.5);
+  check('helper: angleBetween', Math.abs(angleBetween({ x: 0, y: 1 }, { x: 0, y: 0 }, { x: 1, y: 0 }) - 90) < 1e-9);
+  const flat = new OneEuro().filter(0, 5);
+  check('oneEuro: first sample passes through raw', flat === 5);
+  const s = smoothSeries([[0, 1], [25, 1], [50, 9]], { minCutoff: 1.1, beta: 0.02 });
+  check('smoothSeries: returns the same length', s.length === 3 && s[0][1] === 1);
+}
+
+/* 1. ten clean full-depth reps */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  check('setup: plank arms after 3s of valid frames', a.out.armed === true && a.out.reps === 0);
+  const out = run(c, repFrames(a.t, 10).frames);
+  const last = out.allReps.length ? out.allReps[out.allReps.length - 1] : null;
+  say('      T1: reps=' + out.reps + ' clean=' + out.cleanReps + ' detected=' + out.repsDetected
+    + ' state=' + out.state + ' side=' + out.side
+    + ' flags=' + JSON.stringify(out.allReps.map((r) => r.flags))
+    + ' minElbow=' + (last ? last.minElbow.toFixed(1) : '-')
+    + ' duration=' + (last ? Math.round(last.durationMs) : '-')
+    + ' shoulderDrop=' + (last ? last.shoulderDrop.toFixed(3) : '-'));
+  check('T1 ten clean reps -> reps=10', out.reps === 10);
+  check('T1 repsDetected=10 and cleanReps=10', out.repsDetected === 10 && out.cleanReps === 10);
+  check('T1 zero flags on every rep', out.allReps.length === 10 && out.allReps.every((r) => r.flags.length === 0));
+}
+
+/* 2. walking into frame */
+{
+  const c = freshCounter();
+  const spec = [];
+  let t = 0;
+  const n = Math.round(2000 / STEP);
+  for (let i = 0; i < n; i++) {
+    spec.push({ t, opt: { angle: 178 - 120 * Math.sin((i / n) * Math.PI), depth: i / n }, present: false });
+    t += STEP;
+  }
+  for (let i = 0; i < Math.round(1000 / STEP); i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  for (const f of repFrames(t, 1, { downMs: 400, upMs: 400 }).frames) spec.push(f);
+  for (let i = 0; i < Math.round(2000 / STEP); i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  const out = run(c, spec);
+  say('      T2: reps=' + out.reps + ' detected=' + out.repsDetected + ' armed=' + out.armed + ' reasons=' + JSON.stringify(out.plank.reasons));
+  check('T2 rep shape before the arm lock -> 0 reps', out.reps === 0 && out.repsDetected === 0 && out.cleanReps === 0);
+}
+
+/* 3. kneeling / resting after 5 reps */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  run(c, repFrames(a.t, 5).frames);
+  check('T3 five reps counted before the rest', c.reps === 5);
+  let sawArmBreak = false;
+  let t = a.t + 300;
+  for (let i = 0; i < 60; i++) {
+    const out = c.addFrame(t, makeFrame({ angle: 170, depth: 0, tilt: 45 }));
+    if (out.events.some((e) => e.type === 'armBreak')) sawArmBreak = true;
+    t += STEP;
+  }
+  say('      T3: reps=' + c.reps + ' detected=' + c.repsDetected + ' armed=' + c.armed + ' state=' + c.state);
+  check('T3 kneeling emits armBreak', sawArmBreak);
+  check('T3 kneeling adds zero reps', c.reps === 5);
+  check('T3 counter disarms and stays idle', c.armed === false && c.state === 'idle');
+}
+
+/* 4. double beat at the bottom counts one */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const out = rampSpec(c, a.t, [[178, 90, 1, 1, 800], [90, 105, 1, 0.85, 300], [105, 92, 0.85, 1, 300], [92, 178, 1, 0, 700]], 16);
+  say('      T4: reps=' + out.reps + ' detected=' + out.repsDetected + ' flags=' + JSON.stringify(out.allReps.map((r) => r.flags)));
+  check('T4 double beat at the bottom counts ONE rep', out.reps === 1 && out.repsDetected === 1);
+}
+
+/* 5. shallow rep, bottom=100, bottoms at 118 */
+{
+  // documented rule: a descent counts if it either reaches `bottom` on the smoothed angle, or
+  // proves depth with shoulder travel >= 0.10 (assist/confirm). minElbow > bottom then flags 'half'.
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const noTravel = rampSpec(c, a.t, [[178, 118, 0, 0.1, 800], [118, 178, 0.1, 0, 700]]);
+  say('      T5a shallow, no travel: reps=' + noTravel.reps + ' detected=' + noTravel.repsDetected);
+  check('T5a shallow without shoulder travel counts 0', noTravel.reps === 0 && noTravel.repsDetected === 0);
+
+  // T5a used 32+28+12 frames at 25 ms; start T5b after that window
+  const withTravel = rampSpec(c, a.t + 2000, [[178, 118, 0, 1, 800], [118, 178, 1, 0, 700]]);
+  const rep = withTravel.allReps.length ? withTravel.allReps[withTravel.allReps.length - 1] : null;
+  say('      T5b shallow, real travel: reps=' + c.reps + ' detected=' + c.repsDetected
+    + ' flags=' + JSON.stringify(rep ? rep.flags : null)
+    + ' minElbow=' + (rep ? rep.minElbow.toFixed(1) : '-')
+    + ' shoulderDrop=' + (rep ? rep.shoulderDrop.toFixed(3) : '-'));
+  check('T5b shallow-with-travel counts a rep and flags it half', !!rep && rep.flags.includes('half'));
+
+  const c2 = freshCounter({ cleanOnly: true });
+  const a2 = arm(c2, 0);
+  const o2 = rampSpec(c2, a2.t, [[178, 118, 0, 1, 800], [118, 178, 1, 0, 700]]);
+  say('      T5c cleanOnly: reps=' + o2.reps + ' detected=' + o2.repsDetected + ' clean=' + o2.cleanReps);
+  check('T5c cleanOnly keeps flagged reps out of `reps` but keeps repsDetected', o2.reps === 0 && o2.repsDetected === 1 && o2.cleanReps === 0);
+}
+
+/* 6. sagging hips */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const spec = [];
+  let t = a.t;
+  const downN = Math.round(800 / STEP);
+  for (let i = 1; i <= downN; i++) {
+    const k = i / downN;
+    const opt = { angle: 178 + (92 - 178) * k, depth: k };
+    if (i >= 14 && i <= 18) opt.hipOff = 0.25;
+    spec.push({ t, opt });
+    t += STEP;
+  }
+  const upN = Math.round(700 / STEP);
+  for (let i = 1; i <= upN; i++) { const k = i / upN; spec.push({ t, opt: { angle: 92 + (178 - 92) * k, depth: 1 - k } }); t += STEP; }
+  for (let i = 0; i < 12; i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  const out = run(c, spec);
+  const rep = out.allReps.length ? out.allReps[out.allReps.length - 1] : null;
+  say('      T6: reps=' + out.reps + ' flags=' + JSON.stringify(rep ? rep.flags : null)
+    + ' hipMax=' + (rep && rep.hipMax !== null ? rep.hipMax.toFixed(3) : '-') + ' armed=' + out.armed);
+  check('T6 sag excursion flags the rep', out.reps === 1 && !!rep && rep.flags.includes('sag'));
+  check('T6 a brief sag does not break the arm lock', c.armed === true);
+}
+
+/* 7. minRepMs rejects a bounce */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const spec = [];
+  let t = a.t;
+  for (const [from, to, ms] of [[178, 92, 75], [92, 178, 75]]) {
+    const n = Math.max(1, Math.round(ms / STEP));
+    for (let i = 1; i <= n; i++) { spec.push({ t, opt: { angle: from + (to - from) * (i / n), depth: to < from ? 1 : 0 } }); t += STEP; }
+  }
+  for (let i = 0; i < 20; i++) { spec.push({ t, opt: { angle: 178, depth: 0 } }); t += STEP; }
+  const out = run(c, spec);
+  say('      T7: reps=' + out.reps + ' detected=' + out.repsDetected + ' state=' + out.state + ' armed=' + out.armed);
+  check('T7 150 ms bounce rejected (minRepMs=400)', out.reps === 0 && out.repsDetected === 0);
+
+  const c2 = freshCounter({ minRepMs: 2200 });
+  const a2 = arm(c2, 0);
+  const slow = rampSpec(c2, a2.t, [[178, 92, 0, 1, 800], [92, 178, 1, 0, 700]]);
+  const c3 = freshCounter();
+  const a3 = arm(c3, 0);
+  const same = run(c3, repFrames(a3.t, 1).frames);
+  say('      T7b: minRepMs=2200 -> reps=' + slow.reps + ' | minRepMs=400 same rep -> reps=' + same.reps
+    + ' duration=' + (same.allReps[0] ? Math.round(same.allReps[0].durationMs) : '-'));
+  check('T7b duration gate rejects a 1500 ms rep when minRepMs=2200', slow.reps === 0 && slow.repsDetected === 0);
+  check('T7c the same rep counts when minRepMs=400', same.reps === 1);
+}
+
+/* extras: notSide, lost pose, lockout, reset, bad frames */
+{
+  const c = freshCounter();
+  const a = arm(c, 0);
+  const out = c.addFrame(a.t, makeFrame({ angle: 178, depth: 0, tilt: 80 }));
+  say('      extra: tilt 80 -> reasons=' + JSON.stringify(out.plank.reasons) + ' bodyAngle=' + out.bodyAngle.toFixed(1));
+  check('extra: steep tilt reports bodyAngle', out.plank.reasons.includes('bodyAngle'));
+
+  const c2 = freshCounter();
+  const a2 = arm(c2, 0);
+  let sawBreak = false;
+  for (let i = 0; i < 5; i++) {
+    const o = c2.addFrame(a2.t + i * STEP, makeFrame({ angle: 178, present: false }));
+    if (o.events.some((e) => e.type === 'armBreak')) sawBreak = true;
+  }
+  check('extra: losing the pose while armed emits armBreak', sawBreak && c2.armed === false);
+
+  const c3 = freshCounter();
+  const a3 = arm(c3, 0);
+  const o3 = rampSpec(c3, a3.t, [[178, 92, 0, 1, 800], [92, 148, 1, 0.45, 500], [148, 92, 0.45, 1, 500], [92, 178, 1, 0, 700]]);
+  say('      extra lockout: reps=' + o3.reps + ' flags=' + JSON.stringify(o3.allReps.map((r) => r.flags)));
+  check('extra: incomplete lockout counts and is flagged', o3.reps === 2 && o3.allReps[0].flags.includes('lockout'));
+
+  const c4 = freshCounter();
+  const a4 = arm(c4, 0);
+  run(c4, repFrames(a4.t, 3).frames);
+  check('extra: reps counted before reset', c4.reps === 3);
+  c4.reset('test');
+  check('extra: reset zeros counts and state', c4.reps === 0 && c4.repsDetected === 0 && c4.cleanReps === 0 && c4.state === 'idle' && c4.armed === false && c4.trace.length === 0);
+
+  const o5 = c4.addFrame(0, { landmarks: null, present: true, quality: 0, fps: 30 });
+  check('extra: malformed frame does not throw', o5 && o5.reps === 0 && o5.plank.reasons.includes('noPose'));
+  const o6 = c4.addFrame(1, { landmarks: new Array(10).fill({ x: 0.5, y: 0.5, z: 0, visibility: 1 }), present: true, quality: 1, fps: 30 });
+  check('extra: short landmark array treated as noPose', o6.plank.reasons.includes('noPose'));
+  check('extra: trace is capped at 45 frames', c4.trace.length <= 45);
+}
+
+say('');
+say(failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`);
+flush();
+</script>
+</body>
+</html>

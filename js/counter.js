@@ -215,7 +215,6 @@ export class Counter {
     this.medElbow = new MedianFilter(3);
     this.medHip = new MedianFilter(3);
     this.hipEma = null;
-    this.angle = null;
     this.rep = emptyRep();
     this.lastRep = null;
     this.events = [];
@@ -232,7 +231,6 @@ export class Counter {
     this.medElbow.reset();
     this.medHip.reset();
     this.hipEma = null;
-    this.angle = null;
     this.normBaseline = null;
   }
 
