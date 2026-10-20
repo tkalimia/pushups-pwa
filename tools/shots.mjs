@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9333;
-const W = 402, H = 874;
+const W = Number(process.env.SHOT_W || 402), H = Number(process.env.SHOT_H || 874);
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 
 const argv = process.argv.slice(2);

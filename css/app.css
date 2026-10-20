@@ -135,6 +135,9 @@ label.tog .sub{display:block;font-size:12px}
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   transition:opacity .25s linear}
 .stage.dim{opacity:.35}
+.stage>.list,.stage>.sheet,.stage>.cta{align-self:stretch;width:100%;min-width:0}
+.cta{padding:10px 16px 12px;background:var(--bg);border-top:1px solid var(--hair)}
+.cta .sub{margin-top:7px;font-size:12px;line-height:1.35}
 #repnum{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
   font-size:min(46vh,400px,calc(176vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
 #repnum.tick{color:var(--brass)}

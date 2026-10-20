@@ -156,6 +156,9 @@ label.tog .sub{display:block;font-size:12px}
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   transition:opacity .25s linear}
 .stage.dim{opacity:.35}
+.stage>.list,.stage>.sheet,.stage>.cta{align-self:stretch;width:100%;min-width:0}
+.cta{padding:10px 16px 12px;background:var(--bg);border-top:1px solid var(--hair)}
+.cta .sub{margin-top:7px;font-size:12px;line-height:1.35}
 #repnum{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
   font-size:min(46vh,400px,calc(176vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
 #repnum.tick{color:var(--brass)}
@@ -3415,10 +3418,11 @@ export default function train(host) {
           </div>
           <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">no camera, count with your thumb</span></span>
             <input type="checkbox" id="manualChk"></label>
-          <div class="spacer"></div>
-          <button class="btn btn-primary btn-big" id="startBtn">Start set</button>
-          <div class="sub" style="margin-top:8px" id="hint"></div>
         </div>
+      </div>
+      <div class="cta">
+        <button class="btn btn-primary btn-big" id="startBtn">Start set</button>
+        <div class="sub" id="hint"></div>
       </div>`;
     els.qbar = q('#qbar');
     els.qtxt = q('#qtxt');
@@ -5280,7 +5284,7 @@ import { join } from 'node:path';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9333;
-const W = 402, H = 874;
+const W = Number(process.env.SHOT_W || 402), H = Number(process.env.SHOT_H || 874);
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 
 const argv = process.argv.slice(2);

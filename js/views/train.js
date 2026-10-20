@@ -138,10 +138,11 @@ export default function train(host) {
           </div>
           <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">no camera, count with your thumb</span></span>
             <input type="checkbox" id="manualChk"></label>
-          <div class="spacer"></div>
-          <button class="btn btn-primary btn-big" id="startBtn">Start set</button>
-          <div class="sub" style="margin-top:8px" id="hint"></div>
         </div>
+      </div>
+      <div class="cta">
+        <button class="btn btn-primary btn-big" id="startBtn">Start set</button>
+        <div class="sub" id="hint"></div>
       </div>`;
     els.qbar = q('#qbar');
     els.qtxt = q('#qtxt');
