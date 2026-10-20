@@ -15,6 +15,8 @@ const BASE = process.argv[2] || 'http://127.0.0.1:8099';
 const SCHEMES = (process.env.SCHEMES || 'dark,light').split(',');
 const SHOTS = process.env.SHOTS !== '0';
 const ROUTES = (process.env.ROUTES || '/today,/train,/train@count,/train@summary,/progress,/badges,/settings').split(',');
+// Set EXPECTED=<stamp> when auditing a deployment: a stale CDN copy of the build is not the build.
+const EXPECTED = process.env.EXPECTED || '';
 // A route can carry a state suffix — /train@count walks the view into the counting screen before
 // measuring it, so the rubric covers the phases a static hash navigation never reaches.
 const STATES = {
@@ -103,6 +105,8 @@ await send('Network.enable');
 // This is a design audit of the files on disk, so nothing may come from a cache: the service
 // worker precaches every asset and would happily serve last night's build.
 await send('Network.setCacheDisabled', { cacheDisabled: true });
+// The app's own service worker would answer every request from its precache, hiding what is on the server.
+await send('Network.setBypassServiceWorker', { bypass: true }).catch(() => {});
 
 // The in-page probe: one pass over the rendered DOM, returns every finding.
 const PROBE = `(() => {
@@ -222,14 +226,23 @@ const PROBE = `(() => {
 
 const report = {};
 for (const scheme of SCHEMES) {
-  for (const spec of ROUTES) {
+  for (const [i, spec] of ROUTES.entries()) {
     const [route, state] = spec.split('@');
-    const url = `${BASE}/index.html#${route}`;
+    // A distinct query string per route forces a real document load. Changing only the hash would keep
+    // the first document alive for the whole run, so every route after the first would measure one build.
+    const url = `${BASE}/index.html?audit=${Date.now()}${i}#${route}`;
     consoleErrors = [];
     await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: true });
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
     await send('Page.navigate', { url });
     await sleep(2500);
+    // The app's own service worker answers from its precache, which can be an older build than the server's.
+    await evalJs(`(async () => {
+      const rs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map((r) => r.unregister()));
+      if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+      return rs.length;
+    })()`, 'sw-clear');
     await evalJs(`import('${BASE}/tools/seed.js').then(m => m.seed(90))`, 'seed');
     await sleep(1200);
     await evalJs(`location.hash = ${JSON.stringify(route)}`, 'route');
@@ -237,6 +250,9 @@ for (const scheme of SCHEMES) {
     if (state) { await evalJs(STATES[state], state); await sleep(700); }
     const raw = await evalJs(PROBE, 'probe');
     const data = JSON.parse(raw);
+    data.build = await evalJs(
+      `fetch('sw.js?bust=' + Date.now()).then((r) => r.text()).then((t) => (t.match(/pushups-v-(\\d+)/) || [])[1] || 'none')`,
+      'build');
     data.consoleErrors = consoleErrors.slice();
     report[`${scheme}:${spec}`] = data;
     if (SHOTS) {
@@ -262,6 +278,7 @@ for (const [key, d] of Object.entries(report)) {
   const hig = d.targets.filter((t) => !t.aa_fail);
   const accentTotal = Object.entries(d.accents).filter(([k]) => !k.endsWith('_ex'));
   const issues = [];
+  if (EXPECTED && d.build !== EXPECTED) issues.push(`build ${d.build} != ${EXPECTED}`);
   if (contrast.length) issues.push(`contrast ${contrast.length}`);
   if (aa.length) issues.push(`AA-target ${aa.length}`);
   if (hig.length) issues.push(`44pt-target ${hig.length}`);
