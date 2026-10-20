@@ -6,13 +6,20 @@
 import { deleteSet, listReps, listSets, listSetsForDay, saveSet, updateSet } from '../db.js';
 import { loadGoals } from '../goals.js';
 import {
-  bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayFromKey, estimatedMax,
+  addDays, bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayFromKey, estimatedMax,
   flagMix, heatmap, monthBuckets, projectTarget, records, timeOfDay, weekBuckets, yearBuckets,
 } from '../stats.js';
 import { clamp, clear, fmtClock, fmtDay, h, mean, pct, sum, today } from '../util.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const HEAT_WEEKS = 26;      // half a year of columns — as much grid as a phone can hold
+// The heatmap used to squeeze 26 weeks into 370pt, which made every day cell 18×24 — below the
+// WCAG AA minimum for a touch target, and the hit areas had to overlap each other to get that big.
+// It is now a calendar: one week per row, eight rows a page, so each day gets ~48×44 and pages back
+// a month and a half at a time. Long-range history is what the Month/Year charts are for.
+const HEAT_ROWS = 8;        // weeks per page
+const HEAT_CELL = 44;       // CSS px, the iPhone HIG minimum
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const BEST_WEEKS = 26;      // best-set step chart: 26 static bars, no tapping needed
 const REP_CAP = 30;         // per-rep fan-out: never read rep rows for more sets than this
 const TARGET_KEY = 'pushups.target';
 const DEFAULT_TARGET = 100;
@@ -43,7 +50,7 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 const SKELETON = `
   <div class="list">
     <div class="pg-top pad">
-      <h2 class="h1">Progress</h2>
+      <h1 class="h1">Progress</h1>
       <p class="pg-sum" id="pgSum"></p>
       <p class="pg-error" id="pgNote"></p>
     </div>
@@ -161,7 +168,7 @@ function peakCaption(bucket, grain) {
 }
 
 function headBlock(title, sub) {
-  const row = h('div', { class: 'pg-headrow' }, h('div', { class: 'pg-headtitle' }, title));
+  const row = h('div', { class: 'pg-headrow' }, h('h2', { class: 'pg-headtitle' }, title));
   if (sub) row.append(h('div', { class: 'pg-headsub' }, sub));
   return row;
 }
@@ -254,7 +261,22 @@ function barChart(buckets, opts) {
     plot.append(h('div', { class: 'pg-slot' }, h('div', { class: 'pg-bint' }, bar), tick));
   });
   wrap.append(plot, axisRow(buckets, grain));
+  // The bars themselves are aria-hidden decoration, so the wrapper has to say what they mean.
+  const spoken = buckets.filter((b) => b.reps > 0)
+    .slice().sort((a, b) => b.reps - a.reps).slice(0, 3)
+    .map((b) => labelOf(b, grain) + ' ' + b.reps).join(', ');
+  wrap.setAttribute('role', 'img');
+  wrap.setAttribute('aria-label', sum(buckets.map((b) => b.reps)) + ' reps across ' + buckets.length
+    + ' ' + grain + ' bars' + (spoken ? '. Highest: ' + spoken + '.' : '. None logged.'));
   return wrap;
+}
+
+/** Short axis name for one bucket, for spoken chart summaries. */
+function labelOf(b, grain) {
+  if (grain === 'day') return fmtDay(dayFromKey(b.key));
+  if (grain === 'month') return b.key;
+  if (grain === 'year') return b.key;
+  return 'week of ' + fmtDay(b.key);
 }
 
 /* ── the view ──────────────────────────────────────────────────── */
@@ -289,7 +311,7 @@ export default async function progressView(host, ctx) {
   if (dbError) {
     host.replaceChildren(h('div', { class: 'list' },
       h('div', { class: 'pg-top pad' },
-        h('h2', { class: 'h1' }, 'Progress'),
+        h('h1', { class: 'h1' }, 'Progress'),
         h('p', { class: 'pg-error' },
           'could not read your saved sets: ' + dbError + '. Nothing on this screen can be drawn until the database opens again.'))));
     return {};
@@ -318,6 +340,7 @@ export default async function progressView(host, ctx) {
 
   let range = 'week';
   let volKey = 'volume';
+  let heatBack = 0;
   let target = readTarget();
 
   paintHeat();
@@ -341,9 +364,17 @@ export default async function progressView(host, ctx) {
   // ── calendar heatmap: the hero ────────────────────────────────
 
   function paintHeat() {
+    // Rows are weeks, columns are Monday–Sunday. That shape gives every day a full-width slice of
+    // a 370pt screen, so the tappable cell clears the 44pt iPhone bar instead of trading it away
+    // for more columns; the window pages back 8 weeks at a time.
+    const weeks = HEAT_ROWS;
+    const cell = 44;
+    const gap = 3;
+    const lastDay = addDays(key, -7 * weeks * heatBack);
+
     let cols = [];
     try {
-      cols = heatmap(days, HEAT_WEEKS, dailyGoal, key);
+      cols = heatmap(days, weeks, dailyGoal, lastDay);
     } catch (e) {
       els.note.textContent = 'heatmap failed: ' + errText(e);
     }
@@ -351,20 +382,36 @@ export default async function progressView(host, ctx) {
     clear(els.heatCap);
     clear(els.heatLegend);
 
-    const first = cols.length ? cols[0].cells[0].day : key;
-    els.heatCap.append(h('span', { class: 'pg-captxt' }, HEAT_WEEKS + ' weeks'),
-      h('span', { class: 'pg-capdim' }, ' · ' + fmtDay(first) + ' to ' + fmtDay(key) + ' · rows Mon–Sun'));
-    if (!sets.length) els.heatCap.append(h('span', { class: 'pg-capdim' }, ' · nothing here yet'));
+    const first = cols.length ? cols[0].cells[0].day : lastDay;
+    const nav = h('span', { class: 'pg-heatnav' });
+    nav.append(h('button', {
+      class: 'pg-heatbtn', type: 'button', 'aria-label': 'earlier 8 weeks',
+      onclick: () => { heatBack += 1; paintHeat(); },
+    }, h('span', { class: 'pg-heatdisc' }, '‹')), h('button', {
+      class: 'pg-heatbtn', type: 'button', 'aria-label': heatBack === 0 ? 'current weeks' : 'later 8 weeks',
+      disabled: heatBack === 0 ? true : null,
+      onclick: () => { if (heatBack > 0) { heatBack -= 1; paintHeat(); } },
+    }, h('span', { class: 'pg-heatdisc' }, '›')));
 
-    const avail = Math.max(200, (els.heat.clientWidth || 320) - 32);   // .pad is 16px each side
-    const gap = avail < 340 ? 1 : 2;
-    const cell = clamp(Math.floor((avail - gap * (HEAT_WEEKS - 1)) / HEAT_WEEKS), 5, 15);
-    const row = vars(h('div', { class: 'pg-heatrow' }), { '--pg-cell': cell + 'px', '--pg-gap': gap + 'px' });
+    els.heatCap.append(nav,
+      h('span', { class: 'pg-captxt' }, weeks + ' weeks'),
+      h('span', { class: 'pg-capdim' }, ' · ' + fmtDay(first) + ' to ' + fmtDay(lastDay)));
+    if (heatBack > 0) {
+      els.heatCap.append(h('span', { class: 'pg-capdim' },
+        ' · ' + heatBack + ' page' + (heatBack > 1 ? 's' : '') + ' back'));
+    }
+    if (!sets.length) els.heatCap.append(h('span', { class: 'pg-capdim' }, ' · nothing logged yet'));
+
+    const grid = vars(h('div', { class: 'pg-heatgrid' }), { '--pg-cell': cell + 'px', '--pg-gap': gap + 'px' });
+    grid.setAttribute('role', 'img');
+    grid.setAttribute('aria-label', weeks + ' weeks of daily totals, one week per row, Monday first, through ' + fmtDay(lastDay));
+    grid.append(h('div', { class: 'pg-heatrow pg-headday' },
+      ...DAY_LABELS.map((d) => h('span', { class: 'pg-hday' }, d))));
     for (const col of cols) {
       const isNow = col.cells.some((c) => c.day === key);
-      const colEl = h('div', { class: 'pg-hcol' + (isNow ? ' now' : '') });
+      const rowEl = h('div', { class: 'pg-heatrow' + (isNow ? ' now' : '') });
       for (const c of col.cells) {
-        colEl.append(h('button', {
+        rowEl.append(h('button', {
           class: 'pg-hcell' + (c.day === key ? ' today' : ''),
           type: 'button',
           disabled: c.future ? true : null,
@@ -372,9 +419,9 @@ export default async function progressView(host, ctx) {
           onclick: c.future ? null : () => openDaySheet(c.day),
         }, h('span', { class: 'pg-hsq lv' + c.level })));
       }
-      row.append(colEl);
+      grid.append(rowEl);
     }
-    els.heat.append(row);
+    els.heat.append(grid);
 
     const legend = h('div', { class: 'pg-legend' }, h('span', { class: 'pg-capdim' }, 'less'));
     for (let lv = 0; lv <= 4; lv++) legend.append(h('span', { class: 'pg-hsq lv' + lv }));
@@ -426,10 +473,10 @@ export default async function progressView(host, ctx) {
   function paintBest() {
     clear(els.best);
     els.best.append(headBlock('Best set over time',
-      'biggest single set in each of the last ' + HEAT_WEEKS + ' weeks'));
+      'biggest single set in each of the last ' + BEST_WEEKS + ' weeks'));
     let weeks = [];
     try {
-      weeks = bestSetPerWeek(sets, HEAT_WEEKS);
+      weeks = bestSetPerWeek(sets, BEST_WEEKS);
     } catch (e) {
       els.best.append(h('p', { class: 'pg-error' }, 'failed: ' + errText(e)));
       return;

@@ -7,7 +7,7 @@
 .tg-heronum{flex:1;min-width:0}
 .tg-total{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
   line-height:.88;font-size:min(76px,21vw);color:var(--num)}
-.tg-date{color:var(--muted);font-size:13px;margin-top:6px}
+.tg-date{color:var(--muted);font:600 13px/1.35 var(--ui);margin:6px 0 0;letter-spacing:.01em}
 .tg-unit{color:var(--muted);font-size:12px}
 .tg-note{color:var(--rose);font-size:13px;margin-top:6px;overflow-wrap:anywhere}
 
@@ -44,7 +44,7 @@
 .tg-empty{padding-top:8px;margin-top:0;margin-bottom:0}
 .tg-set{padding:0 16px;border-bottom:1px solid var(--hair)}
 .tg-setmain{display:flex;align-items:center;gap:8px;min-height:52px}
-.tg-editbtn{flex:1;min-width:0;display:flex;align-items:center;gap:12px;margin:0;padding:8px 0;
+.tg-editbtn{flex:1;min-width:0;display:flex;align-items:center;gap:12px;margin:0;padding:10px 0;min-height:44px;
   background:none;border:0;border-radius:0;color:inherit;font:inherit;text-align:left;
   -webkit-appearance:none;cursor:pointer;transition:opacity .12s linear}
 .tg-editbtn:active{opacity:.55}

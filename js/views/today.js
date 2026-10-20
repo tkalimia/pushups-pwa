@@ -18,7 +18,7 @@ const SKELETON = `
     <div class="tg-hero">
       <div class="tg-heronum">
         <div class="tg-total" id="tgTotal">0</div>
-        <div class="tg-date" id="tgDate"></div>
+        <h1 class="tg-date" id="tgDate"></h1>
         <div class="tg-unit">reps today</div>
         <div class="tg-note" id="tgNote"></div>
       </div>

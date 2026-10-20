@@ -49,12 +49,13 @@ export default function train(host) {
   ];
   const checkState = { body: false, vis: false, plank: false, light: false };
   const checkWhy = {};
+  let poseSeen = false;
 
   host.innerHTML = `
     <div class="counter" data-phase="setup">
       <div class="topline">
         <span id="clock" class="clock">--:--</span>
-        <span id="phaseLabel">set up</span>
+        <h1 id="phaseLabel">set up</h1>
         <span class="endslot"><button class="btn btn-warn" id="endBtn" hidden>End</button></span>
       </div>
       <div class="hairline" id="hairline"></div>
@@ -83,6 +84,13 @@ export default function train(host) {
   els.phaseLabel = q('#phaseLabel');
   els.endBtn = q('#endBtn');
   els.endBtn.addEventListener('click', () => endSet('button'));
+  // Bound once: the stage keeps its listeners across every phase's innerHTML swap.
+  els.stage.addEventListener('click', (e) => {
+    if (phase !== 'set' || !load().manualMode) return;
+    // The tap that opened the set bubbles through here too — it is not a rep.
+    if (e.target.closest('#startBtn')) return;
+    manualTap();
+  });
 
   // ── luminance proxy for the lighting check ────────────────────
   const lumCanvas = document.createElement('canvas');
@@ -176,19 +184,41 @@ export default function train(host) {
     paintChecks();
   }
 
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function markIcon(state) {
+    const mk = (tag, a) => {
+      const e = document.createElementNS(SVGNS, tag);
+      for (const k of Object.keys(a)) e.setAttribute(k, a[k]);
+      return e;
+    };
+    const el = mk('svg', {
+      viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true',
+    });
+    el.append(mk('circle', { cx: '12', cy: '12', r: '8.6' }));
+    if (state === 'ok') el.append(mk('path', { d: 'M8.3 12.3l2.6 2.6 4.9-5.5' }));
+    if (state === 'bad') el.append(mk('path', { d: 'M12 7.6v5.2' }), mk('path', { d: 'M12 16.2h.01' }));
+    return el;
+  }
+
+  // Three states, not two: a gate you have not reached yet is not an error. Everything stays grey
+  // until the camera is live AND has actually seen a body — then a failed gate goes rose.
   function paintChecks() {
     if (!els.checks) return;
+    const judgeable = !!cam && poseSeen;
     els.checks.replaceChildren(...CHECKS.map(([k, label, hint]) => {
+      const state = checkState[k] ? 'ok' : judgeable ? 'bad' : 'wait';
       const row = document.createElement('div');
-      row.className = 'chk ' + (checkState[k] ? 'ok' : 'bad');
+      row.className = 'chk ' + state;
       const mk = document.createElement('span');
       mk.className = 'mk';
-      mk.textContent = checkState[k] ? '✓' : '·';
+      mk.append(markIcon(state));
       const t = document.createElement('span');
+      t.className = 't';
       t.textContent = label;
       const why = document.createElement('span');
       why.className = 'why';
-      why.textContent = checkState[k] ? '' : (checkWhy[k] || hint);
+      why.textContent = state === 'ok' ? '' : state === 'wait' ? 'not framed yet' : (checkWhy[k] || hint);
       row.append(mk, t, why);
       return row;
     }));
@@ -205,6 +235,7 @@ export default function train(host) {
   }
 
   function evaluateChecks(f) {
+    poseSeen = !!(f && f.present);
     if (!f || !f.present) {
       checkState.body = checkState.vis = checkState.plank = false;
       checkWhy.body = 'no pose yet';
@@ -351,7 +382,6 @@ export default function train(host) {
     els.adj = q('#adj');
     q('#minus').addEventListener('click', (e) => { e.stopPropagation(); correct(-1); });
     q('#plus').addEventListener('click', (e) => { e.stopPropagation(); correct(1); });
-    els.stage.addEventListener('click', manualTap);
     tickTimer = setInterval(tick, 500);
     paintCount();
   }

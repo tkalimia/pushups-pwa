@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pushups PWA — phase 2 installer (today, history heatmap, charts, goals and streaks). Self-contained: writes every source file, then downloads
+# Pushups PWA — phase 2 installer (design pass: WCAG-accurate accents, calendar heatmap, honest gate states, manual-set fix). Self-contained: writes every source file, then downloads
 # the MediaPipe wasm + pose models + fonts and generates the icons. Re-runnable; overwrites
 # only files inside the app folder. Nothing here touches your saved sets (they live on the phone).
 set -euo pipefail
@@ -22,13 +22,24 @@ cat > 'css/app.css' <<'__EOF_css_app_css__'
 @font-face{font-family:"Barlow Semi Condensed";font-style:normal;font-weight:100 900;font-display:swap;src:url(../fonts/barlow-semi-condensed.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Sans";font-style:normal;font-weight:100 700;font-display:swap;src:url(../fonts/ibm-plex-sans.woff2) format("woff2")}
 
+/* Six named hues. Two rules govern them:
+   1. an accent used as TEXT or as a THIN LINE darkens in light mode (a bright hue on porcelain
+      is unreadable), so --track/--brass/--rose/--plum are scheme-adaptive;
+   2. a bright hue survives only as a solid FILL, with its own on-color (--brass-fill/--on-brass,
+      --rose-fill/--on-rose). Ratios are measured in tools/audit.mjs, not eyeballed. */
 :root{
   --ink:#0E1A18;
   --porcelain:#E9EEEA;
   --track:#4FA3A5;
   --brass:#C9922F;
-  --rose:#D0566B;
-  --plum:#6E5A78;
+  --rose:#DE6E81;
+  --plum:#9A86A3;
+
+  --brass-fill:#C9922F;   --on-brass:#14110A;
+  --rose-fill:#B23A52;    --on-rose:#E9EEEA;
+  --rose-tint:rgba(222,110,129,.14);
+  --scrim:rgba(5,10,9,.72);
+  --cam:#050A09;
 
   --bg:#0E1A18;
   --sheet:#13211F;
@@ -37,6 +48,13 @@ cat > 'css/app.css' <<'__EOF_css_app_css__'
   --hair:rgba(220,230,226,.12);
   --tint:rgba(220,230,226,.05);
   --num:#DCE6E2;
+
+  /* Heatmap ladder: five discrete steps, no opacity tricks (an opacity wash out is invisible
+     against a light background). lv0 is --tint. */
+  --heat-1:#1D3A38;
+  --heat-2:#2C5B59;
+  --heat-3:#3D8184;
+  --heat-4:#4FA3A5;
 
   --display:"Barlow Semi Condensed","Helvetica Neue",sans-serif;
   --ui:"IBM Plex Sans",-apple-system,"Helvetica Neue",sans-serif;
@@ -50,19 +68,32 @@ cat > 'css/app.css' <<'__EOF_css_app_css__'
 
 @media (prefers-color-scheme:light){
   :root{
+    --track:#22686A;
+    --brass:#7C5A1A;
+    --rose:#A8324A;
+    --plum:#5E4A68;
+    --rose-fill:#9E2C42;
+    --rose-tint:rgba(168,50,74,.10);
+
     --bg:#E9EEEA;
     --sheet:#F2F5F2;
     --text:#0E1A18;
-    --muted:#5B6965;
+    --muted:#4E5B57;
     --hair:rgba(14,26,24,.11);
     --tint:rgba(14,26,24,.045);
     --num:#0E1A18;
+
+    --heat-1:#C3D6D4;
+    --heat-2:#8FB6B4;
+    --heat-3:#4F8B8D;
+    --heat-4:#22686A;
   }
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
-body{background:var(--bg);color:var(--text);font:16px/1.45 var(--ui);transition:background .2s linear,color .2s linear}
+body{background:var(--bg);color:var(--text);font:16px/1.45 var(--ui);transition:background .2s linear,color .2s linear;
+  -webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
 a{color:inherit;text-decoration:none}
 :focus-visible{outline:2px solid var(--track);outline-offset:2px}
@@ -76,6 +107,7 @@ a{color:inherit;text-decoration:none}
 .grow{flex:1;min-height:0}
 .center{align-items:center;justify-content:center;text-align:center}
 .h1{font:600 21px/1.25 var(--ui);margin:0}
+.h2{font:600 16px/1.3 var(--ui);margin:0 0 6px;letter-spacing:.01em}
 .sub{color:var(--muted);font-size:13px}
 .mono{font:12px/1.5 ui-monospace,"SF Mono",Menlo,monospace}
 .num{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums}
@@ -95,7 +127,7 @@ a{color:inherit;text-decoration:none}
 /* ── update banner ── */
 #banner:empty{display:none}
 #banner{position:fixed;top:var(--sat);left:0;right:0;z-index:70}
-#banner>div{margin:0 var(--sal) 0 var(--sar);padding:11px 16px;background:var(--brass);color:#14110A;
+#banner>div{margin:0 var(--sal) 0 var(--sar);padding:11px 16px;background:var(--brass-fill);color:var(--on-brass);
   font-weight:600;font-size:15px;cursor:pointer}
 body.banner-on #view{top:calc(var(--sat) + 45px)}
 
@@ -104,7 +136,7 @@ body.banner-on #view{top:calc(var(--sat) + 45px)}
   padding:12px 22px;font-weight:600;font-size:16px;transition:opacity .12s linear,transform .12s ease-out}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:var(--text);color:var(--bg);border-color:transparent}
-.btn-warn{background:var(--rose);color:#fff;border-color:transparent}
+.btn-warn{background:var(--rose-fill);color:var(--on-rose);border-color:transparent}
 .btn-quiet{background:none;border-color:transparent;color:var(--muted)}
 .btn-big{width:100%;padding:17px;font-size:17px}
 .btn[disabled]{opacity:.4}
@@ -115,20 +147,29 @@ select,input[type=text],input[type=number],textarea{background:var(--tint);borde
   border-radius:10px;padding:10px 12px;width:100%;appearance:none}
 select{padding-right:30px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%237F918C' stroke-width='1.8' stroke-linecap='round'/></svg>");
   background-repeat:no-repeat;background-position:right 11px center}
-input[type=range]{width:100%;accent-color:var(--track);height:28px}
-input[type=checkbox]{width:22px;height:22px;accent-color:var(--track)}
-label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;
-  border-bottom:1px solid var(--hair);font-size:15px}
+@media (prefers-color-scheme:light){
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%234E5B57' stroke-width='1.8' stroke-linecap='round'/></svg>")}
+}
+/* 44pt is the iPhone HIG minimum for anything you drag or tap with a thumb. The drawn control
+   stays slim; the element box is what your finger hits. */
+input[type=range]{width:100%;accent-color:var(--track);height:44px}
+input[type=checkbox]{width:26px;height:26px;accent-color:var(--track)}
+label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;
+  padding:11px 0;border-bottom:1px solid var(--hair);font-size:15px}
 label.tog .sub{display:block;font-size:12px}
 
 /* ── camera + overlay ── */
-.camwrap{position:relative;background:#050A09;flex:1;min-height:0;overflow:hidden}
+.camwrap{position:relative;background:var(--cam);flex:1;min-height:0;overflow:hidden}
 .camwrap video{display:block;width:100%;height:100%;object-fit:cover}
 .camwrap canvas{position:absolute;inset:0;width:100%;height:100%}
+/* The camera surface is always near-black, so it gets its own text ramp in both schemes —
+   a light-mode --muted on it would be unreadable. */
 .camoff{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:14px;padding:24px;text-align:center;color:var(--muted);font-size:14px;background:#050A09}
+  gap:14px;padding:24px;text-align:center;color:#8A9C97;font-size:14px;background:var(--cam)}
+.camoff h3{margin:0 0 6px;color:var(--porcelain);font:600 16px/1.3 var(--ui)}
+.camoff ol{margin:0;padding-left:18px;font-size:13px;line-height:1.55;text-align:left}
 .pill{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:8px;
-  padding:6px 12px;border-radius:999px;background:rgba(5,10,9,.62);color:#DCE6E2;font-size:13px;
+  padding:6px 12px;border-radius:999px;background:var(--scrim);color:var(--porcelain);font-size:13px;
   font-variant-numeric:tabular-nums}
 .pill i{width:7px;height:7px;border-radius:50%;background:var(--track)}
 .pill.bad i{background:var(--rose)}
@@ -140,11 +181,16 @@ label.tog .sub{display:block;font-size:12px}
 .bar{height:5px;background:var(--tint);border-radius:3px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--track);transition:width .3s linear}
 .bar i.bad{background:var(--rose)}
-.chk{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px}
-.chk .mk{width:16px;flex:none;text-align:center;font-weight:700;color:var(--muted)}
+.chk{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
+.chk .mk{width:18px;height:18px;flex:none;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.chk .mk svg{width:16px;height:16px;display:block}
 .chk.ok .mk{color:var(--track)}
 .chk.bad .mk{color:var(--rose)}
-.chk .why{color:var(--muted);font-size:12px;margin-left:auto;text-align:right}
+.chk.bad>.t{color:var(--text)}
+.chk.wait{opacity:.72}
+.chk .t{flex:0 1 auto}
+.chk .why{color:var(--muted);font-size:12px;margin-left:auto;text-align:right;min-width:0;overflow-wrap:anywhere}
+.chk.bad .why{color:var(--rose)}
 .recos{padding:10px 16px;background:var(--sheet);border-top:1px solid var(--hair);font-size:14px}
 .recos h3{margin:0 0 6px;font-size:14px;font-weight:600}
 .recos ol{margin:0;padding-left:18px;color:var(--muted)}
@@ -174,7 +220,9 @@ label.tog .sub{display:block;font-size:12px}
   color:var(--muted);font-variant-numeric:tabular-nums}
 .topline .clock{justify-self:start}
 .topline .endslot{justify-self:end}
-.warnbox{padding:9px 14px;background:rgba(208,86,107,.14);color:var(--rose);font-size:14px;border-top:1px solid var(--rose)}
+/* The live phase label is this screen's heading: it says what the app is doing right now. */
+#phaseLabel{margin:0;font:600 13px/1.25 var(--ui);letter-spacing:.02em;color:inherit}
+.warnbox{padding:9px 14px;background:var(--rose-tint);color:var(--rose);font-size:14px;border-top:1px solid var(--rose-fill)}
 .warnbox[hidden]{display:none}
 
 /* ── summary ── */
@@ -200,6 +248,15 @@ label.tog .sub{display:block;font-size:12px}
 .todaytotal .num{font-size:80px;line-height:.9}
 .soon{padding:26px 16px;color:var(--muted);font-size:15px}
 
+/* ── badges (placeholder) ── */
+.bd-list{padding:8px 0 20px}
+.bd-row{display:flex;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--hair);min-height:44px}
+.bd-ic{width:22px;height:22px;flex:none;color:var(--muted)}
+.bd-ic svg{width:22px;height:22px;display:block}
+.bd-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.bd-txt b{font-weight:600;font-size:15px}
+.bd-rule{color:var(--muted);font-size:13px;line-height:1.45}
+
 /* ── debug ── */
 .dbg{flex:1;min-height:0;overflow:auto;padding:10px 14px calc(20px + var(--sab));
   font:12px/1.45 ui-monospace,"SF Mono",Menlo,monospace}
@@ -211,6 +268,15 @@ label.tog .sub{display:block;font-size:12px}
 .field{margin:9px 0}
 .field>label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:3px}
 .field>label b{color:var(--text);font-variant-numeric:tabular-nums}
+
+/* ── motion ──
+   Every animation in the app confirms an action Tal already took, and all of them are color or
+   opacity except two: the button press scale and the readiness meter sliding to width. Those two
+   are what reduced-motion users lose; the state changes themselves stay visible. */
+@media (prefers-reduced-motion:reduce){
+  .btn:active{transform:none}
+  .bar i{transition:none}
+}
 __EOF_css_app_css__
 
 mkdir -p 'css'
@@ -231,7 +297,7 @@ cat > 'css/progress.css' <<'__EOF_css_progress_css__'
 .pg-box{background:var(--sheet);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
   padding-top:13px;padding-bottom:12px;margin-top:18px}
 .pg-headrow{display:block}
-.pg-headtitle{font:600 15px/1.3 var(--ui)}
+.pg-headtitle{font:600 15px/1.3 var(--ui);margin:0}
 .pg-headsub{color:var(--muted);font-size:12px;margin-top:1px;overflow-wrap:anywhere}
 .pg-cap{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;padding-top:14px;padding-bottom:6px}
 .pg-captxt{font-size:13px;color:var(--text)}
@@ -240,29 +306,41 @@ cat > 'css/progress.css' <<'__EOF_css_progress_css__'
 
 /* ── calendar heatmap: the hero band ───────────────────────────── */
 .pg-heatsec{background:var(--sheet);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
-.pg-heatrow{display:flex;gap:var(--pg-gap,2px);width:max-content;max-width:100%;margin:8px auto 0}
-.pg-hcol{display:flex;flex-direction:column;gap:0;flex:none;position:relative;border-radius:4px}
-/* this week: a faint band plus a brass tick above the column, so it never reads as a stray outline */
-.pg-hcol.now{background:var(--tint)}
-.pg-hcol.now::before{content:'';position:absolute;left:0;right:0;top:-6px;height:2px;
+.pg-heatgrid{display:flex;flex-direction:column;gap:var(--pg-gap,3px);margin:10px 0 0}
+/* one week per row, Monday first */
+.pg-heatrow{display:flex;gap:var(--pg-gap,3px);align-items:stretch;position:relative;border-radius:6px}
+.pg-heatrow.now{background:var(--tint)}
+/* this week gets a brass tick down its left edge, so it reads as "now" not as a stray outline */
+.pg-heatrow.now::before{content:'';position:absolute;left:-4px;top:1px;bottom:1px;width:2px;
   border-radius:1px;background:var(--brass)}
-.pg-hcell{box-sizing:content-box;position:relative;flex:none;width:var(--pg-cell,10px);height:24px;
-  margin:0 -3px;padding:0 3px;border:0;background:none;display:flex;align-items:center;
-  justify-content:center;cursor:pointer;-webkit-appearance:none;transition:opacity .12s linear}
+.pg-headday{gap:var(--pg-gap,3px)}
+.pg-hday{flex:1 1 0;min-width:0;font-size:10px;line-height:1.2;color:var(--muted);text-align:center;letter-spacing:.02em}
+.pg-hcell{position:relative;flex:1 1 0;min-width:0;height:var(--pg-cell,44px);padding:0;border:0;
+  background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  -webkit-appearance:none;border-radius:5px;transition:opacity .12s linear}
 .pg-hcell:active{opacity:.5}
 .pg-hcell[disabled]{cursor:default}
 .pg-hcell[disabled]:active{opacity:1}
-.pg-hsq{display:block;width:var(--pg-cell,10px);height:var(--pg-cell,10px);border-radius:2px;
-  background:var(--tint);box-shadow:inset 0 0 0 1px var(--hair);opacity:1}
-.pg-hsq.lv1{background:var(--track);box-shadow:none;opacity:.32}
-.pg-hsq.lv2{background:var(--track);box-shadow:none;opacity:.55}
-.pg-hsq.lv3{background:var(--track);box-shadow:none;opacity:.78}
-.pg-hsq.lv4{background:var(--track);box-shadow:none;opacity:1}
+.pg-hsq{display:block;width:100%;height:100%;border-radius:5px;background:var(--tint);
+  box-shadow:inset 0 0 0 1px var(--hair)}
+/* Five discrete steps instead of one hue at four opacities: an opacity wash vanishes on porcelain,
+   and the only job of this ladder is that neighbouring levels look different. */
+.pg-hsq.lv1{background:var(--heat-1);box-shadow:none}
+.pg-hsq.lv2{background:var(--heat-2);box-shadow:none}
+.pg-hsq.lv3{background:var(--heat-3);box-shadow:none}
+.pg-hsq.lv4{background:var(--heat-4);box-shadow:none}
 /* the ring sits on the cell, not the square, so a low level does not fade it out */
-.pg-hcell.today::before{content:'';position:absolute;left:1px;right:1px;top:2px;bottom:2px;
-  border:1.5px solid var(--brass);border-radius:5px}
+.pg-hcell.today::before{content:'';position:absolute;inset:0;border:2px solid var(--brass);border-radius:7px}
+.pg-heatnav{display:inline-flex;align-items:center;gap:2px;margin-right:4px;align-self:center}
+/* 44pt hit box with a 30pt visible disc: the finger gets the HIG target, the caption stays quiet */
+.pg-heatbtn{width:44px;height:44px;margin:-9px 0;display:inline-flex;align-items:center;justify-content:center;
+  border:0;background:none;padding:0;cursor:pointer;color:var(--text)}
+.pg-heatdisc{width:30px;height:30px;border-radius:9px;border:1px solid var(--hair);background:var(--tint);
+  display:inline-flex;align-items:center;justify-content:center;font:600 17px/1 var(--ui);padding-bottom:2px}
+.pg-heatbtn:active .pg-heatdisc{background:var(--hair)}
+.pg-heatbtn[disabled]{opacity:.3}
 .pg-legend{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;line-height:1.4}
-.pg-legend .pg-hsq{width:10px;height:10px;flex:none}
+.pg-legend .pg-hsq{width:11px;height:11px;flex:none}
 
 /* ── segmented controls ────────────────────────────────────────── */
 .pg-seg{display:flex;gap:6px;padding-top:4px;padding-bottom:8px;flex-wrap:wrap}
@@ -344,11 +422,11 @@ input.pg-tin{width:88px;flex:none;font-family:var(--display);font-weight:700;fon
 .pg-propseg{position:relative;flex:1 1 0;min-width:0;display:flex;align-items:center;
   justify-content:center;border-radius:2px}
 .pg-propseg::before{content:'';position:absolute;left:0;right:0;top:0;bottom:0;
-  background:var(--track);opacity:.32;border-radius:2px}
-.pg-propseg.lv2::before{opacity:.55}
-.pg-propseg.lv3::before{opacity:.78}
-.pg-propseg.lv4::before{opacity:1}
-.pg-propseg.empty::before{background:var(--tint);opacity:1}
+  background:var(--heat-1);border-radius:2px}
+.pg-propseg.lv2::before{background:var(--heat-2)}
+.pg-propseg.lv3::before{background:var(--heat-3)}
+.pg-propseg.lv4::before{background:var(--heat-4)}
+.pg-propseg.empty::before{background:var(--tint)}
 .pg-propnum{position:relative;font-size:11px;font-weight:600;color:var(--text);
   font-variant-numeric:tabular-nums}
 .pg-todrow{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--hair);
@@ -416,7 +494,7 @@ cat > 'css/today.css' <<'__EOF_css_today_css__'
 .tg-heronum{flex:1;min-width:0}
 .tg-total{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
   line-height:.88;font-size:min(76px,21vw);color:var(--num)}
-.tg-date{color:var(--muted);font-size:13px;margin-top:6px}
+.tg-date{color:var(--muted);font:600 13px/1.35 var(--ui);margin:6px 0 0;letter-spacing:.01em}
 .tg-unit{color:var(--muted);font-size:12px}
 .tg-note{color:var(--rose);font-size:13px;margin-top:6px;overflow-wrap:anywhere}
 
@@ -453,7 +531,7 @@ cat > 'css/today.css' <<'__EOF_css_today_css__'
 .tg-empty{padding-top:8px;margin-top:0;margin-bottom:0}
 .tg-set{padding:0 16px;border-bottom:1px solid var(--hair)}
 .tg-setmain{display:flex;align-items:center;gap:8px;min-height:52px}
-.tg-editbtn{flex:1;min-width:0;display:flex;align-items:center;gap:12px;margin:0;padding:8px 0;
+.tg-editbtn{flex:1;min-width:0;display:flex;align-items:center;gap:12px;margin:0;padding:10px 0;min-height:44px;
   background:none;border:0;border-radius:0;color:inherit;font:inherit;text-align:left;
   -webkit-appearance:none;cursor:pointer;transition:opacity .12s linear}
 .tg-editbtn:active{opacity:.55}
@@ -511,7 +589,7 @@ cat > 'index.html' <<'__EOF_index_html__'
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0E1A18" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#E9EEEA" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3597,36 +3675,77 @@ __EOF_js_util_js__
 
 mkdir -p 'js/views'
 cat > 'js/views/badges.js' <<'__EOF_js_views_badges_js__'
+/* Badges is still a placeholder in this build. It should read as a deliberate blank page — the
+   rules it will use, phrased as rules, and no invented progress. */
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function icon(paths) {
+  const el = document.createElementNS(SVGNS, 'svg');
+  el.setAttribute('viewBox', '0 0 24 24');
+  el.setAttribute('fill', 'none');
+  el.setAttribute('stroke', 'currentColor');
+  el.setAttribute('stroke-width', '1.7');
+  el.setAttribute('stroke-linecap', 'round');
+  el.setAttribute('stroke-linejoin', 'round');
+  el.setAttribute('aria-hidden', 'true');
+  for (const d of paths) {
+    const p = document.createElementNS(SVGNS, d.c === 'circle' ? 'circle' : 'path');
+    if (d.c === 'circle') {
+      p.setAttribute('cx', d.cx); p.setAttribute('cy', d.cy); p.setAttribute('r', d.r);
+    } else {
+      p.setAttribute('d', d.d);
+    }
+    el.append(p);
+  }
+  return el;
+}
+
+const MEDAL = [
+  { c: 'circle', cx: '12', cy: '9', r: '5.4' },
+  { d: 'M9.2 13.6L7.5 20l4.5-2.6L16.5 20l-1.7-6.4' },
+];
+
+// name → the exact condition that will light it up, stated as a condition
+const UPCOMING = [
+  ['1,000 lifetime', 'lifetime reps reach 1,000'],
+  ['Best set 30', 'one set of 30 with nothing flagged'],
+  ['Clean 20', '20 reps in a row with no form flags'],
+  ['Steady tempo', 'every rep of a set within 15% of that set\u2019s mean'],
+  ['Twelve weeks', 'weekly goal met 12 weeks running'],
+];
+
 export default function badgesView(host) {
-  host.innerHTML = `
-    <div class="pad">
-      <h2 class="h1" style="margin:18px 0 6px">Badges</h2>
-      <p class="sub">Phase 3 turns these on. The data they need is already being recorded:</p>
-      <div class="rule"></div>
-      <div id="grid"></div>
-    </div>`;
-  const ideas = [
-    ['1,000 lifetime', 'total reps across every set'],
-    ['Best set 30', 'one set, no flags'],
-    ['Clean 20', '20 reps with nothing flagged'],
-    ['Steady tempo', 'a set where every rep landed within 15% of the mean'],
-    ['Weekly goal × 12', ' twelve weeks in a row'],
-  ];
-  const grid = host.querySelector('#grid');
-  ideas.forEach(([name, why]) => {
+  const head = document.createElement('div');
+  head.className = 'pad';
+  const h1 = document.createElement('h1');
+  h1.className = 'h1';
+  h1.textContent = 'Badges';
+  const note = document.createElement('p');
+  note.className = 'sub';
+  note.textContent = 'Not wired up yet. Everything these will read is already being recorded, so they will retroactively light up the moment phase 3 lands.';
+  head.append(h1, note);
+
+  const list = document.createElement('div');
+  list.className = 'bd-list';
+  for (const [name, rule] of UPCOMING) {
     const row = document.createElement('div');
-    row.className = 'chk bad';
-    const mk = document.createElement('span');
-    mk.className = 'mk';
-    mk.textContent = '✦';
-    const t = document.createElement('span');
-    t.textContent = name;
-    const w = document.createElement('span');
-    w.className = 'why';
-    w.textContent = why;
-    row.append(mk, t, w);
-    grid.append(row);
-  });
+    row.className = 'bd-row';
+    const ic = document.createElement('span');
+    ic.className = 'bd-ic';
+    ic.append(icon(MEDAL));
+    const txt = document.createElement('span');
+    txt.className = 'bd-txt';
+    const strong = document.createElement('b');
+    strong.textContent = name;
+    const why = document.createElement('span');
+    why.className = 'bd-rule';
+    why.textContent = rule;
+    txt.append(strong, why);
+    row.append(ic, txt);
+    list.append(row);
+  }
+
+  host.replaceChildren(head, list);
   return {};
 }
 __EOF_js_views_badges_js__
@@ -3896,13 +4015,20 @@ cat > 'js/views/progress.js' <<'__EOF_js_views_progress_js__'
 import { deleteSet, listReps, listSets, listSetsForDay, saveSet, updateSet } from '../db.js';
 import { loadGoals } from '../goals.js';
 import {
-  bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayFromKey, estimatedMax,
+  addDays, bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayFromKey, estimatedMax,
   flagMix, heatmap, monthBuckets, projectTarget, records, timeOfDay, weekBuckets, yearBuckets,
 } from '../stats.js';
 import { clamp, clear, fmtClock, fmtDay, h, mean, pct, sum, today } from '../util.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const HEAT_WEEKS = 26;      // half a year of columns — as much grid as a phone can hold
+// The heatmap used to squeeze 26 weeks into 370pt, which made every day cell 18×24 — below the
+// WCAG AA minimum for a touch target, and the hit areas had to overlap each other to get that big.
+// It is now a calendar: one week per row, eight rows a page, so each day gets ~48×44 and pages back
+// a month and a half at a time. Long-range history is what the Month/Year charts are for.
+const HEAT_ROWS = 8;        // weeks per page
+const HEAT_CELL = 44;       // CSS px, the iPhone HIG minimum
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const BEST_WEEKS = 26;      // best-set step chart: 26 static bars, no tapping needed
 const REP_CAP = 30;         // per-rep fan-out: never read rep rows for more sets than this
 const TARGET_KEY = 'pushups.target';
 const DEFAULT_TARGET = 100;
@@ -3933,7 +4059,7 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 const SKELETON = `
   <div class="list">
     <div class="pg-top pad">
-      <h2 class="h1">Progress</h2>
+      <h1 class="h1">Progress</h1>
       <p class="pg-sum" id="pgSum"></p>
       <p class="pg-error" id="pgNote"></p>
     </div>
@@ -4051,7 +4177,7 @@ function peakCaption(bucket, grain) {
 }
 
 function headBlock(title, sub) {
-  const row = h('div', { class: 'pg-headrow' }, h('div', { class: 'pg-headtitle' }, title));
+  const row = h('div', { class: 'pg-headrow' }, h('h2', { class: 'pg-headtitle' }, title));
   if (sub) row.append(h('div', { class: 'pg-headsub' }, sub));
   return row;
 }
@@ -4144,7 +4270,22 @@ function barChart(buckets, opts) {
     plot.append(h('div', { class: 'pg-slot' }, h('div', { class: 'pg-bint' }, bar), tick));
   });
   wrap.append(plot, axisRow(buckets, grain));
+  // The bars themselves are aria-hidden decoration, so the wrapper has to say what they mean.
+  const spoken = buckets.filter((b) => b.reps > 0)
+    .slice().sort((a, b) => b.reps - a.reps).slice(0, 3)
+    .map((b) => labelOf(b, grain) + ' ' + b.reps).join(', ');
+  wrap.setAttribute('role', 'img');
+  wrap.setAttribute('aria-label', sum(buckets.map((b) => b.reps)) + ' reps across ' + buckets.length
+    + ' ' + grain + ' bars' + (spoken ? '. Highest: ' + spoken + '.' : '. None logged.'));
   return wrap;
+}
+
+/** Short axis name for one bucket, for spoken chart summaries. */
+function labelOf(b, grain) {
+  if (grain === 'day') return fmtDay(dayFromKey(b.key));
+  if (grain === 'month') return b.key;
+  if (grain === 'year') return b.key;
+  return 'week of ' + fmtDay(b.key);
 }
 
 /* ── the view ──────────────────────────────────────────────────── */
@@ -4179,7 +4320,7 @@ export default async function progressView(host, ctx) {
   if (dbError) {
     host.replaceChildren(h('div', { class: 'list' },
       h('div', { class: 'pg-top pad' },
-        h('h2', { class: 'h1' }, 'Progress'),
+        h('h1', { class: 'h1' }, 'Progress'),
         h('p', { class: 'pg-error' },
           'could not read your saved sets: ' + dbError + '. Nothing on this screen can be drawn until the database opens again.'))));
     return {};
@@ -4208,6 +4349,7 @@ export default async function progressView(host, ctx) {
 
   let range = 'week';
   let volKey = 'volume';
+  let heatBack = 0;
   let target = readTarget();
 
   paintHeat();
@@ -4231,9 +4373,17 @@ export default async function progressView(host, ctx) {
   // ── calendar heatmap: the hero ────────────────────────────────
 
   function paintHeat() {
+    // Rows are weeks, columns are Monday–Sunday. That shape gives every day a full-width slice of
+    // a 370pt screen, so the tappable cell clears the 44pt iPhone bar instead of trading it away
+    // for more columns; the window pages back 8 weeks at a time.
+    const weeks = HEAT_ROWS;
+    const cell = 44;
+    const gap = 3;
+    const lastDay = addDays(key, -7 * weeks * heatBack);
+
     let cols = [];
     try {
-      cols = heatmap(days, HEAT_WEEKS, dailyGoal, key);
+      cols = heatmap(days, weeks, dailyGoal, lastDay);
     } catch (e) {
       els.note.textContent = 'heatmap failed: ' + errText(e);
     }
@@ -4241,20 +4391,36 @@ export default async function progressView(host, ctx) {
     clear(els.heatCap);
     clear(els.heatLegend);
 
-    const first = cols.length ? cols[0].cells[0].day : key;
-    els.heatCap.append(h('span', { class: 'pg-captxt' }, HEAT_WEEKS + ' weeks'),
-      h('span', { class: 'pg-capdim' }, ' · ' + fmtDay(first) + ' to ' + fmtDay(key) + ' · rows Mon–Sun'));
-    if (!sets.length) els.heatCap.append(h('span', { class: 'pg-capdim' }, ' · nothing here yet'));
+    const first = cols.length ? cols[0].cells[0].day : lastDay;
+    const nav = h('span', { class: 'pg-heatnav' });
+    nav.append(h('button', {
+      class: 'pg-heatbtn', type: 'button', 'aria-label': 'earlier 8 weeks',
+      onclick: () => { heatBack += 1; paintHeat(); },
+    }, h('span', { class: 'pg-heatdisc' }, '‹')), h('button', {
+      class: 'pg-heatbtn', type: 'button', 'aria-label': heatBack === 0 ? 'current weeks' : 'later 8 weeks',
+      disabled: heatBack === 0 ? true : null,
+      onclick: () => { if (heatBack > 0) { heatBack -= 1; paintHeat(); } },
+    }, h('span', { class: 'pg-heatdisc' }, '›')));
 
-    const avail = Math.max(200, (els.heat.clientWidth || 320) - 32);   // .pad is 16px each side
-    const gap = avail < 340 ? 1 : 2;
-    const cell = clamp(Math.floor((avail - gap * (HEAT_WEEKS - 1)) / HEAT_WEEKS), 5, 15);
-    const row = vars(h('div', { class: 'pg-heatrow' }), { '--pg-cell': cell + 'px', '--pg-gap': gap + 'px' });
+    els.heatCap.append(nav,
+      h('span', { class: 'pg-captxt' }, weeks + ' weeks'),
+      h('span', { class: 'pg-capdim' }, ' · ' + fmtDay(first) + ' to ' + fmtDay(lastDay)));
+    if (heatBack > 0) {
+      els.heatCap.append(h('span', { class: 'pg-capdim' },
+        ' · ' + heatBack + ' page' + (heatBack > 1 ? 's' : '') + ' back'));
+    }
+    if (!sets.length) els.heatCap.append(h('span', { class: 'pg-capdim' }, ' · nothing logged yet'));
+
+    const grid = vars(h('div', { class: 'pg-heatgrid' }), { '--pg-cell': cell + 'px', '--pg-gap': gap + 'px' });
+    grid.setAttribute('role', 'img');
+    grid.setAttribute('aria-label', weeks + ' weeks of daily totals, one week per row, Monday first, through ' + fmtDay(lastDay));
+    grid.append(h('div', { class: 'pg-heatrow pg-headday' },
+      ...DAY_LABELS.map((d) => h('span', { class: 'pg-hday' }, d))));
     for (const col of cols) {
       const isNow = col.cells.some((c) => c.day === key);
-      const colEl = h('div', { class: 'pg-hcol' + (isNow ? ' now' : '') });
+      const rowEl = h('div', { class: 'pg-heatrow' + (isNow ? ' now' : '') });
       for (const c of col.cells) {
-        colEl.append(h('button', {
+        rowEl.append(h('button', {
           class: 'pg-hcell' + (c.day === key ? ' today' : ''),
           type: 'button',
           disabled: c.future ? true : null,
@@ -4262,9 +4428,9 @@ export default async function progressView(host, ctx) {
           onclick: c.future ? null : () => openDaySheet(c.day),
         }, h('span', { class: 'pg-hsq lv' + c.level })));
       }
-      row.append(colEl);
+      grid.append(rowEl);
     }
-    els.heat.append(row);
+    els.heat.append(grid);
 
     const legend = h('div', { class: 'pg-legend' }, h('span', { class: 'pg-capdim' }, 'less'));
     for (let lv = 0; lv <= 4; lv++) legend.append(h('span', { class: 'pg-hsq lv' + lv }));
@@ -4316,10 +4482,10 @@ export default async function progressView(host, ctx) {
   function paintBest() {
     clear(els.best);
     els.best.append(headBlock('Best set over time',
-      'biggest single set in each of the last ' + HEAT_WEEKS + ' weeks'));
+      'biggest single set in each of the last ' + BEST_WEEKS + ' weeks'));
     let weeks = [];
     try {
-      weeks = bestSetPerWeek(sets, HEAT_WEEKS);
+      weeks = bestSetPerWeek(sets, BEST_WEEKS);
     } catch (e) {
       els.best.append(h('p', { class: 'pg-error' }, 'failed: ' + errText(e)));
       return;
@@ -4840,12 +5006,16 @@ export default function settingsView(host) {
 
   host.innerHTML = `
     <div class="list">
-      <div class="pad"><h2 class="h1" style="margin:14px 0 4px">Depth preset</h2>
+      <div class="pad"><h1 class="h1" style="margin:16px 0 2px">Settings</h1>
+        <p class="sub" style="margin:0 0 10px">How the camera decides a rep counted. Nothing here leaves this phone.</p>
+      </div>
+      <div class="rule"></div>
+      <div class="pad"><h2 class="h2">Depth preset</h2>
         <p class="sub" style="margin:0 0 8px">Relaxed counts a shallower bend. Strict wants an almost straight arm at the top.</p>
         ${SEL('preset', [['relaxed', 'Relaxed'], ['standard', 'Standard'], ['strict', 'Strict']], s.preset)}
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 8px">Thresholds</h2>
+      <div class="pad"><h2 class="h2">Thresholds</h2>
         <div class="field"><label for="top">Top (lockout) angle <b id="topOut"></b></label>
           <input type="range" id="top" min="120" max="178" step="1"></div>
         <div class="field"><label for="bottom">Bottom angle <b id="bottomOut"></b></label>
@@ -4856,7 +5026,7 @@ export default function settingsView(host) {
           <span class="grow"></span><span class="sub" id="ovl"></span></div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Counting</h2>
+      <div class="pad"><h2 class="h2">Counting</h2>
         <label class="tog"><span>Clean reps only<span class="sub">skip flagged reps in the count</span></span><input type="checkbox" id="cleanOnly"></label>
         <label class="tog"><span>Auto-start on plank<span class="sub">begin the countdown once the plank is held</span></span><input type="checkbox" id="autoArm"></label>
         <label class="tog"><span>End set after idle<span class="sub" id="idleLbl"></span></span>
@@ -4868,14 +5038,14 @@ export default function settingsView(host) {
         </div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Feedback</h2>
+      <div class="pad"><h2 class="h2">Feedback</h2>
         ${SEL('voice', [['every', 'Say every rep'], ['milestones', 'Say every fifth'], ['off', 'Silent']], s.voice)}
         <label class="tog"><span>Beeps</span><input type="checkbox" id="beeps"></label>
         <label class="tog"><span>Haptics<span class="sub" id="vibHint"></span></span><input type="checkbox" id="haptics"></label>
         <label class="tog"><span>Show skeleton during a set</span><input type="checkbox" id="skeletonOnSet"></label>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Camera and model</h2>
+      <div class="pad"><h2 class="h2">Camera and model</h2>
         ${SEL('camera', [['environment', 'Back camera (side view)'], ['user', 'Front camera']], s.camera)}
         <div class="spacer"></div>
         ${SEL('model', [['lite', 'Pose lite — fast, usually enough'], ['full', 'Pose full — better in bad light']], s.model)}
@@ -4885,7 +5055,7 @@ export default function settingsView(host) {
         <label class="tog"><span>Manual tap-to-log<span class="sub">no camera at all</span></span><input type="checkbox" id="manualMode"></label>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Goals</h2>
+      <div class="pad"><h2 class="h2">Goals</h2>
         <div class="field"><label for="gdaily">Daily <b id="gdailyOut"></b></label>
           <input type="range" id="gdaily" min="0" max="300" step="5"></div>
         <div class="field"><label for="gweekly">Weekly <b id="gweeklyOut"></b></label>
@@ -4901,7 +5071,7 @@ export default function settingsView(host) {
         <div class="kv"><span>passes left this week</span><b class="num" id="passesLeft">…</b></div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Data</h2>
+      <div class="pad"><h2 class="h2">Data</h2>
         <div class="kv"><span>saved sets on this phone</span><b class="num" id="setCount">…</b></div>
         <div class="kv"><span>persistent storage</span><b id="persist">…</b></div>
         <div class="row" style="margin-top:10px">
@@ -4912,7 +5082,7 @@ export default function settingsView(host) {
         <div class="sub" style="margin-top:8px" id="dataMsg"></div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Diagnostics</h2>
+      <div class="pad"><h2 class="h2">Diagnostics</h2>
         <div class="mono" id="plat" style="white-space:pre-wrap"></div>
         <div class="row" style="margin-top:10px">
           <a class="btn grow" href="#/debug">Counter lab</a>
@@ -5114,7 +5284,7 @@ const SKELETON = `
     <div class="tg-hero">
       <div class="tg-heronum">
         <div class="tg-total" id="tgTotal">0</div>
-        <div class="tg-date" id="tgDate"></div>
+        <h1 class="tg-date" id="tgDate"></h1>
         <div class="tg-unit">reps today</div>
         <div class="tg-note" id="tgNote"></div>
       </div>
@@ -5623,12 +5793,13 @@ export default function train(host) {
   ];
   const checkState = { body: false, vis: false, plank: false, light: false };
   const checkWhy = {};
+  let poseSeen = false;
 
   host.innerHTML = `
     <div class="counter" data-phase="setup">
       <div class="topline">
         <span id="clock" class="clock">--:--</span>
-        <span id="phaseLabel">set up</span>
+        <h1 id="phaseLabel">set up</h1>
         <span class="endslot"><button class="btn btn-warn" id="endBtn" hidden>End</button></span>
       </div>
       <div class="hairline" id="hairline"></div>
@@ -5657,6 +5828,13 @@ export default function train(host) {
   els.phaseLabel = q('#phaseLabel');
   els.endBtn = q('#endBtn');
   els.endBtn.addEventListener('click', () => endSet('button'));
+  // Bound once: the stage keeps its listeners across every phase's innerHTML swap.
+  els.stage.addEventListener('click', (e) => {
+    if (phase !== 'set' || !load().manualMode) return;
+    // The tap that opened the set bubbles through here too — it is not a rep.
+    if (e.target.closest('#startBtn')) return;
+    manualTap();
+  });
 
   // ── luminance proxy for the lighting check ────────────────────
   const lumCanvas = document.createElement('canvas');
@@ -5750,19 +5928,41 @@ export default function train(host) {
     paintChecks();
   }
 
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function markIcon(state) {
+    const mk = (tag, a) => {
+      const e = document.createElementNS(SVGNS, tag);
+      for (const k of Object.keys(a)) e.setAttribute(k, a[k]);
+      return e;
+    };
+    const el = mk('svg', {
+      viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true',
+    });
+    el.append(mk('circle', { cx: '12', cy: '12', r: '8.6' }));
+    if (state === 'ok') el.append(mk('path', { d: 'M8.3 12.3l2.6 2.6 4.9-5.5' }));
+    if (state === 'bad') el.append(mk('path', { d: 'M12 7.6v5.2' }), mk('path', { d: 'M12 16.2h.01' }));
+    return el;
+  }
+
+  // Three states, not two: a gate you have not reached yet is not an error. Everything stays grey
+  // until the camera is live AND has actually seen a body — then a failed gate goes rose.
   function paintChecks() {
     if (!els.checks) return;
+    const judgeable = !!cam && poseSeen;
     els.checks.replaceChildren(...CHECKS.map(([k, label, hint]) => {
+      const state = checkState[k] ? 'ok' : judgeable ? 'bad' : 'wait';
       const row = document.createElement('div');
-      row.className = 'chk ' + (checkState[k] ? 'ok' : 'bad');
+      row.className = 'chk ' + state;
       const mk = document.createElement('span');
       mk.className = 'mk';
-      mk.textContent = checkState[k] ? '✓' : '·';
+      mk.append(markIcon(state));
       const t = document.createElement('span');
+      t.className = 't';
       t.textContent = label;
       const why = document.createElement('span');
       why.className = 'why';
-      why.textContent = checkState[k] ? '' : (checkWhy[k] || hint);
+      why.textContent = state === 'ok' ? '' : state === 'wait' ? 'not framed yet' : (checkWhy[k] || hint);
       row.append(mk, t, why);
       return row;
     }));
@@ -5779,6 +5979,7 @@ export default function train(host) {
   }
 
   function evaluateChecks(f) {
+    poseSeen = !!(f && f.present);
     if (!f || !f.present) {
       checkState.body = checkState.vis = checkState.plank = false;
       checkWhy.body = 'no pose yet';
@@ -5925,7 +6126,6 @@ export default function train(host) {
     els.adj = q('#adj');
     q('#minus').addEventListener('click', (e) => { e.stopPropagation(); correct(-1); });
     q('#plus').addEventListener('click', (e) => { e.stopPropagation(); correct(1); });
-    els.stage.addEventListener('click', manualTap);
     tickTimer = setInterval(tick, 500);
     paintCount();
   }
@@ -6352,6 +6552,8 @@ index.html            app shell, tab bar, service-worker registration
 manifest.webmanifest  name, icons, standalone display
 sw.js                 generated: versioned cache + precache list + update flow
 css/app.css           palette, safe-area insets, dark and light
+css/today.css         goal ring, streak line, missed-day sheet
+css/progress.css      heatmap grid, chart axes, range switcher
 js/main.js            hash router, update prompt, wake-lock and storage sentinels
 js/camera.js          getUserMedia lifecycle + human recovery copy
 js/pose.js            MediaPipe landmarker, gpu→cpu fallback, 15–30 fps, skeleton overlay
@@ -6359,7 +6561,8 @@ js/counter.js         state machine: hysteresis, arm gate, flags, presets, one-t
 js/one-euro.js        smoothing for elbow angle
 js/workout.js         set lifecycle helpers (modes arrive in phase 3)
 js/db.js              IndexedDB v1: sets, reps, meta + export/import
-js/stats.js           aggregation (phase 2)
+js/stats.js           day/week/month/year buckets, streaks, records, estimates, heatmap
+js/goals.js           daily/weekly/yearly goals, streak mode, rest passes (stored in db meta)
 js/badges.js          rule engine (phase 3)
 js/plans.js           progression plans (phase 3)
 js/reminders.js       due-today card, Badging API, .ics (phase 3)
@@ -6371,7 +6574,8 @@ vendor/mediapipe/     tasks-vision bundle + wasm, self-hosted
 models/               pose_landmarker_lite.task, pose_landmarker_full.task
 fonts/                Barlow Semi Condensed (the rep number), IBM Plex Sans (everything else)
 icons/                generated app icons
-tools/                asset fetcher, icon generator, sw stamper, dev server
+tools/                asset fetcher, icon generator, sw stamper, dev server,
+                      shots.mjs (headless iPhone screenshot harness), seed.js (fixture data)
 scripts/              dev.sh, deploy.sh
 ```
 
@@ -6380,7 +6584,7 @@ scripts/              dev.sh, deploy.sh
 | phase | what |
 |---|---|
 | 1 | counter core, setup, lifecycle, correction, saving, voice, offline, counter lab |
-| 2 | Today with goal ring, History heatmap, charts, records, goals, streaks, export/import polish |
+| 2 | ✅ Today with goal ring, history heatmap, charts, records, goals, streaks, export/import of goals |
 | 3 | badge engine, workout modes, plans, Layer A reminders (in-app card, icon badge, `.ics`) |
 | 4 | threshold tuning from your detected-vs-corrected data, performance, accessibility |
 | 5 | optional Layer B Web Push via a Cloudflare Worker with VAPID + cron |
@@ -6395,8 +6599,14 @@ scripts/              dev.sh, deploy.sh
   appears for a Home Screen install.
 - Offline is proven after a first successful load with the model fetched. Clearing Safari website
   data, or iOS deciding the app is stale, drops the cache — reopen it online once and it rebuilds.
-- Phase 2/3 screens are placeholders: tabs exist, content arrives later. Recorded data is already in
-  the final schema, so nothing needs re-entering.
+- The Badges tab is still a placeholder (phase 3). Today, Progress and Settings are live.
+- Charts only ever show what is on this phone. Export after every meaningful session — a cleared
+  Safari website-data drops both the history and the offline cache.
+- `estimatedMax` is a floor plus a documented allowance (+12% of your best recent set, capped at
+  +10), not a measurement. The milestone date is a least-squares fit over your last 12 weekly best
+  sets and moves as soon as you log one real set.
+- Tempo and depth consistency need per-rep rows, which only sets saved by the camera have. Manual
+  sets and anything imported from an older export show as unmeasured.
 __EOF_README_md__
 
 mkdir -p 'scripts'
@@ -7657,6 +7867,304 @@ process.exit(fail ? 1 : 0);
 __EOF_tests_stats_test_mjs__
 
 mkdir -p 'tools'
+cat > 'tools/audit.mjs' <<'__EOF_tools_audit_mjs__'
+// Design rubric audit, measured in a real Chromium at iPhone metrics.
+// Checks OpenDesign's craft rules that are machine-verifiable: WCAG contrast, tap targets,
+// accent discipline, heading structure, focus styling, chart text alternatives, state coverage.
+//   node tools/audit.mjs [base-url]            # default http://127.0.0.1:8099
+//   SCHEMES=dark SHOTS=0 node tools/audit.mjs
+import { spawn } from 'node:child_process';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const PORT = 9344;
+const W = Number(process.env.SHOT_W || 402), H = Number(process.env.SHOT_H || 874);
+const BASE = process.argv[2] || 'http://127.0.0.1:8099';
+const SCHEMES = (process.env.SCHEMES || 'dark,light').split(',');
+const SHOTS = process.env.SHOTS !== '0';
+const ROUTES = (process.env.ROUTES || '/today,/train,/train@count,/train@summary,/progress,/badges,/settings').split(',');
+// A route can carry a state suffix — /train@count walks the view into the counting screen before
+// measuring it, so the rubric covers the phases a static hash navigation never reaches.
+const STATES = {
+  count: `(async () => {
+    const q = (s) => document.querySelector(s);
+    const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+    const m = q('#manualChk'); if (m && !m.checked) { m.click(); await nap(500); }
+    if (q('#startBtn')) { q('#startBtn').click(); await nap(500); }
+    for (let i = 0; i < 12; i++) q('#chip').click();
+    return 'rep=' + q('#repnum').textContent;
+  })()`,
+  summary: `(async () => {
+    const q = (s) => document.querySelector(s);
+    const nap = (ms) => new Promise((r) => setTimeout(r, ms));
+    const m = q('#manualChk'); if (m && !m.checked) { m.click(); await nap(500); }
+    if (q('#startBtn')) { q('#startBtn').click(); await nap(500); }
+    if (q('#chip')) for (let i = 0; i < 12; i++) q('#chip').click();
+    q('#endBtn').click();
+    return 'summary';
+  })()`,
+};
+const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+// Fresh profile every run: a service worker left over from a previous run would serve its own precache.
+const profile = mkdtempSync(join(tmpdir(), 'pushups-audit-'));
+const chrome = spawn(CHROME, [
+  '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
+  `--window-size=${W},${H}`, `--user-agent=${UA}`,
+  '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
+  '--hide-scrollbars', '--allow-running-insecure-content', '--mute-audio', 'about:blank',
+], { stdio: ['ignore', 'ignore', 'pipe'] });
+let chromeErr = '';
+chrome.stderr.on('data', (d) => { chromeErr += d.toString(); });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function firstTarget() {
+  for (let i = 0; i < 80; i++) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+      const page = list.find((t) => t.type === 'page');
+      if (page) return page;
+    } catch { /* starting */ }
+    await sleep(250);
+  }
+  throw new Error('chrome did not start:\n' + chromeErr.slice(-1500));
+}
+
+let id = 0;
+const pending = new Map();
+let ws;
+let consoleErrors = [];
+function send(method, params = {}) {
+  const mid = ++id;
+  ws.send(JSON.stringify({ id: mid, method, params }));
+  return new Promise((resolve, reject) => pending.set(mid, { resolve, reject }));
+}
+async function evalJs(expr, label) {
+  const res = await send('Runtime.evaluate', { expression: `(async () => { return (${expr}); })()`, awaitPromise: true, returnByValue: true });
+  if (res.exceptionDetails) throw new Error(`${label}: ${res.exceptionDetails.exception?.description || res.exceptionDetails.text}`);
+  return res.result?.value;
+}
+
+const page = await firstTarget();
+ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+ws.onmessage = (ev) => {
+  const m = JSON.parse(ev.data);
+  if (m.id && pending.has(m.id)) {
+    const { resolve, reject } = pending.get(m.id);
+    pending.delete(m.id);
+    if (m.error) reject(new Error(m.error.message)); else resolve(m.result);
+  } else if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') {
+    // Headless has no user activation, so haptics log a warning the phone never would.
+    if (/Blocked call to navigator\.vibrate/i.test(m.params.entry.text)) return;
+    consoleErrors.push(m.params.entry.text);
+  } else if (m.method === 'Runtime.exceptionThrown') {
+    const d = m.params.exceptionDetails;
+    consoleErrors.push('exception: ' + (d.exception?.description || d.text));
+  }
+};
+
+await send('Page.enable');
+await send('Runtime.enable');
+await send('Log.enable');
+await send('Network.enable');
+// This is a design audit of the files on disk, so nothing may come from a cache: the service
+// worker precaches every asset and would happily serve last night's build.
+await send('Network.setCacheDisabled', { cacheDisabled: true });
+
+// The in-page probe: one pass over the rendered DOM, returns every finding.
+const PROBE = `(() => {
+  const px = (c) => {
+    const m = /rgba?\\(([^)]+)\\)/.exec(c) || /oklab\\(([^)]+)\\)/.exec(c);
+    if (!m) return null;
+    const p = m[1].split(/[\\s,/]+/).filter(Boolean);
+    if (/oklab/.test(c)) return null;
+    const n = p.map((v, i) => i === 3 ? parseFloat(v) : (v.endsWith('%') ? parseFloat(v) / (i ? 1 : 2.55) : parseFloat(v)));
+    return { r: n[0], g: n[1], b: n[2], a: n.length > 3 ? n[3] : 1 };
+  };
+  const over = (c, b) => c.a >= 1 ? c : { r: c.r * c.a + b.r * (1 - c.a), g: c.g * c.a + b.g * (1 - c.a), b: c.b * c.a + b.b * (1 - c.a), a: 1 };
+  const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.93 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); };
+  const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+  const hex = (c) => '#' + [c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+  const bgOf = (el) => {
+    let out = [];
+    for (let n = el; n; n = n.parentElement) {
+      const c = px(getComputedStyle(n).backgroundColor);
+      if (c && c.a > 0) { out.push(c); if (c.a >= 1) break; }
+    }
+    let acc = { r: 0, g: 0, b: 0, a: 1 };
+    for (let i = out.length - 1; i >= 0; i--) acc = over(out[i], acc);
+    return acc;
+  };
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) < 0.05) return false;
+    if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return false;
+    return true;
+  };
+  const root = getComputedStyle(document.documentElement);
+  const tokens = {};
+  for (const k of ['--track', '--brass', '--rose', '--plum', '--ink', '--porcelain', '--bg', '--sheet', '--text', '--muted']) {
+    const v = root.getPropertyValue(k).trim();
+    const m = /^#([0-9a-f]{6})$/i.exec(v);
+    if (m) tokens[k.slice(2)] = { r: parseInt(m[1].slice(0, 2), 16), g: parseInt(m[1].slice(2, 4), 16), b: parseInt(m[1].slice(4, 6), 16), a: 1 };
+  }
+  const near = (c, t) => c && Math.abs(c.r - t.r) + Math.abs(c.g - t.g) + Math.abs(c.b - t.b) < 24;
+
+  const findings = [];
+  const accents = {};
+  const seen = new Set();
+
+  // 1. text contrast, per visible text run
+  for (const el of document.querySelectorAll('body *')) {
+    if (!el.parentElement || !shown(el)) continue;
+    let text = '';
+    for (const n of el.childNodes) if (n.nodeType === 3) text += n.nodeValue;
+    text = text.trim();
+    if (!text) continue;
+    const s = getComputedStyle(el);
+    if (Number(s.opacity) < 0.5 && !el.closest('[data-counting]')) { /* faded on purpose */ }
+    const fg = over(px(s.color) || { r: 0, g: 0, b: 0, a: 1 }, bgOf(el));
+    const bg = bgOf(el);
+    const size = parseFloat(s.fontSize), weight = Number(s.fontWeight) || 400;
+    const large = size >= 24 || (size >= 18.5 && weight >= 700);
+    const min = large ? 3 : 4.5;
+    const r = ratio(fg, bg);
+    if (r < min) findings.push({ kind: 'contrast', worst: +r.toFixed(2), need: min, where: text.slice(0, 34), color: hex(fg), on: hex(bg), px: Math.round(size * 10) / 10, w: weight, sel: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).join('.') : '') });
+    // 2. accent flood: saturated token used as text or fill
+    for (const [name, tok] of Object.entries(tokens)) {
+      if (!['track', 'brass', 'rose', 'plum'].includes(name)) continue;
+      if (near(px(s.color), tok)) { accents[name] = (accents[name] || 0) + 1; (accents[name + '_ex'] = accents[name + '_ex'] || []).push(text.slice(0, 20)); }
+      const fill = px(s.backgroundColor), stroke = px(s.borderTopColor);
+      if (fill && fill.a > 0.3 && near(fill, tok)) { accents[name] = (accents[name] || 0) + 1; }
+      else if (stroke && stroke.a > 0.3 && near(stroke, tok)) { accents[name] = (accents[name] || 0) + 1; }
+    }
+  }
+
+  // 3. tap targets — measured against the real hit area: a control inside a <label> is tapped
+  // through the label, so the label box is the target.
+  const targets = [];
+  for (const el of document.querySelectorAll('a[href],button,input,select,textarea,[role="button"],[tabindex]:not([tabindex="-1"])')) {
+    if (!shown(el) || el.disabled) continue;
+    const lab = el.matches('input,select,textarea') ? el.closest('label') : null;
+    const hit = lab || el;
+    const r = hit.getBoundingClientRect();
+    const w = Math.round(r.width), h = Math.round(r.height);
+    if (w >= 44 && h >= 44) continue;
+    const label = (el.getAttribute('aria-label') || hit.textContent || el.type || '').trim().replace(/\\s+/g, ' ').slice(0, 26);
+    targets.push({ label, w, h, aa_fail: w < 24 || h < 24, sel: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') });
+  }
+
+  // 4. headings + landmarks + chart alternatives
+  const heads = [...document.querySelectorAll('h1,h2,h3,h4')].map((h) => h.tagName + ' ' + h.textContent.trim().slice(0, 30));
+  const skipped = heads.some((h, i) => i > 0 && Number(h[1]) - Number(heads[i - 1][1]) > 1);
+  const svgNoAlt = [...document.querySelectorAll('svg')].filter((s) => {
+    const r = s.getBoundingClientRect();
+    return r.width > 60 && r.height > 60 && !s.getAttribute('aria-label') && !s.querySelector('title')
+      && !s.closest('[aria-label]') && s.getAttribute('aria-hidden') !== 'true' && !s.closest('[aria-hidden="true"]');
+  }).length;
+  const zoomBlocked = /user-scalable\s*=\s*no|maximum-scale/i.test((document.querySelector('meta[name=viewport]') || {}).content || '');
+  const imgsNoAlt = [...document.querySelectorAll('img')].filter((i) => i.getAttribute('alt') === null).length;
+
+  // 5. focus styling killed anywhere?
+  let outlineKilled = false, reducedMotion = 0;
+  for (const sheet of document.styleSheets) {
+    let rules; try { rules = sheet.cssRules; } catch { continue; }
+    for (const rule of rules || []) {
+      const t = rule.cssText || '';
+      if (/outline\\s*:\\s*(none|0)/.test(t) || /outline-width\\s*:\\s*0/.test(t)) outlineKilled = true;
+      if (rule.media && /prefers-reduced-motion/.test(rule.media.mediaText)) reducedMotion++;
+      for (const inner of rule.cssRules || []) if (/prefers-reduced-motion/.test(inner.conditionText || '')) reducedMotion++;
+    }
+  }
+
+  return JSON.stringify({
+    findings, accents, targets, heads, skipped, svgNoAlt, imgsNoAlt, outlineKilled, reducedMotion, zoomBlocked,
+    tokens: Object.fromEntries(Object.entries(tokens).map(([k, v]) => [k, hex(v)])),
+    viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio },
+    scroll: { client: document.querySelector('#view')?.scrollHeight, visible: innerHeight },
+  });
+})()`;
+
+const report = {};
+for (const scheme of SCHEMES) {
+  for (const spec of ROUTES) {
+    const [route, state] = spec.split('@');
+    const url = `${BASE}/index.html#${route}`;
+    consoleErrors = [];
+    await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: true });
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await send('Page.navigate', { url });
+    await sleep(2500);
+    await evalJs(`import('${BASE}/tools/seed.js').then(m => m.seed(90))`, 'seed');
+    await sleep(1200);
+    await evalJs(`location.hash = ${JSON.stringify(route)}`, 'route');
+    await sleep(1200);
+    if (state) { await evalJs(STATES[state], state); await sleep(700); }
+    const raw = await evalJs(PROBE, 'probe');
+    const data = JSON.parse(raw);
+    data.consoleErrors = consoleErrors.slice();
+    report[`${scheme}:${spec}`] = data;
+    if (SHOTS) {
+      const shot = await send('Page.captureScreenshot', { format: 'png' });
+      const file = `/tmp/audit_${scheme}${spec.replace(/[\/@]/g, '_')}.png`;
+      writeFileSync(file, Buffer.from(shot.data, 'base64'));
+    }
+  }
+}
+await send('Emulation.clearDeviceMetricsOverride').catch(() => {});
+ws.close();
+chrome.kill();
+
+writeFileSync('/tmp/pushups-audit.json', JSON.stringify(report, null, 2));
+
+// ── human report ──
+let fails = 0;
+const SEV = (n) => n;
+for (const [key, d] of Object.entries(report)) {
+  const contrast = d.findings.filter((f) => f.kind === 'contrast');
+  const worst = [...contrast].sort((a, b) => a.worst - b.worst).slice(0, 6);
+  const aa = d.targets.filter((t) => t.aa_fail);
+  const hig = d.targets.filter((t) => !t.aa_fail);
+  const accentTotal = Object.entries(d.accents).filter(([k]) => !k.endsWith('_ex'));
+  const issues = [];
+  if (contrast.length) issues.push(`contrast ${contrast.length}`);
+  if (aa.length) issues.push(`AA-target ${aa.length}`);
+  if (hig.length) issues.push(`44pt-target ${hig.length}`);
+  if (!d.heads.some((h) => h.startsWith('H1'))) issues.push('no-h1');
+  if (d.skipped) issues.push('heading-skip');
+  if (d.svgNoAlt) issues.push(`svg-no-alt ${d.svgNoAlt}`);
+  if (d.outlineKilled) issues.push('outline-killed');
+  if (!d.reducedMotion) issues.push('no-reduced-motion');
+  if (d.zoomBlocked) issues.push('zoom-blocked');
+  if (d.consoleErrors.length) issues.push(`console ${d.consoleErrors.length}`);
+  fails += issues.length;
+  console.log(`\n${key}${issues.length ? '   ✗ ' + issues.join('  ') : '   ✓ clean'}`);
+  console.log(`   accents: ${accentTotal.map(([k, v]) => `${k}×${v}`).join(' ') || 'none'} · headings: ${d.heads.map((h) => h.split(' ')[0]).join('>') || 'none'}`);
+  for (const f of worst) console.log(`   [contrast ${f.worst}/${f.need}] "${f.where}" ${f.color} on ${f.on} @${f.px}px/${f.w} — ${f.sel}`);
+  const tally = (list) => {
+    const m = new Map();
+    for (const t of list) {
+      const k = t.sel + ' ' + t.w + '×' + t.h;
+      m.set(k, (m.get(k) || 0) + 1);
+      if (!m.has(k + '|ex')) m.set(k + '|ex', t.label);
+    }
+    return [...m].filter(([k]) => !k.endsWith('|ex')).slice(0, 6)
+      .map(([k, n]) => `   ${k} ×${n}  "${m.get(k + '|ex')}"`);
+  };
+  for (const line of tally(aa)) console.log('   [AA target]' + line);
+  for (const line of tally(hig)) console.log('   [under 44pt]' + line);
+  for (const e of d.consoleErrors.slice(0, 3)) console.log(`   [console] ${e}`);
+}
+console.log(`\n${fails ? 'FAIL' : 'PASS'} — ${fails} issue groups. Full data: /tmp/pushups-audit.json${SHOTS ? ' · shots /tmp/audit_*.png' : ''}`);
+process.exit(0);
+__EOF_tools_audit_mjs__
+
+mkdir -p 'tools'
 cat > 'tools/build-stamp.sh' <<'__EOF_tools_build_stamp_sh__'
 #!/usr/bin/env bash
 # Regenerate sw.js from tools/sw.template.js with a fresh cache version + precache list.
@@ -8020,7 +8528,7 @@ cat > 'tools/shots.mjs' <<'__EOF_tools_shots_mjs__'
 //   node tools/shots.mjs <url> <out.png> [--dark] [--light] [--step <js>] [--wait <ms>] [--click <selector>]
 // Chrome flags include a fake camera device, so #/train reaches the real setup layout.
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -8046,7 +8554,8 @@ while (argv.length) {
   else throw new Error('unknown flag ' + f);
 }
 
-const profile = join(tmpdir(), 'pushups-shot-profile');
+// Fresh profile per run — a leftover service worker would serve its own stale precache.
+const profile = mkdtempSync(join(tmpdir(), 'pushups-shot-'));
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
   `--window-size=${W},${H}`, `--user-agent=${UA}`,
@@ -8100,6 +8609,8 @@ ws.onmessage = (ev) => {
 await send('Page.enable');
 await send('Runtime.enable');
 await send('Log.enable');
+await send('Network.enable');
+await send('Network.setCacheDisabled', { cacheDisabled: true });
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: true });
 await send('Network.setUserAgentOverride', { userAgent: UA });
 if (scheme) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
@@ -8110,7 +8621,7 @@ for (const [kind, arg] of steps) {
   if (kind === 'wait') { await sleep(Number(arg)); continue; }
   const expr = kind === 'click'
     ? `(() => { const el = document.querySelector(${JSON.stringify(arg)}); if (!el) throw new Error('no element ' + ${JSON.stringify(arg)}); el.click(); return 'clicked'; })()`
-    : `(async () => { const v = await (${arg}); return typeof v === 'string' ? v : JSON.stringify(v); })()`;
+    : `(async () => { let f = (${arg}); if (typeof f === 'function') f = f(); const v = await f; return typeof v === 'string' ? v : JSON.stringify(v); })()`;
   const res = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
   if (res.exceptionDetails) {
     console.error('  [step failed]', arg, res.exceptionDetails.exception?.description || '');

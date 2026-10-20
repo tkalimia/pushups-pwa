@@ -1,13 +1,24 @@
 @font-face{font-family:"Barlow Semi Condensed";font-style:normal;font-weight:100 900;font-display:swap;src:url(../fonts/barlow-semi-condensed.woff2) format("woff2")}
 @font-face{font-family:"IBM Plex Sans";font-style:normal;font-weight:100 700;font-display:swap;src:url(../fonts/ibm-plex-sans.woff2) format("woff2")}
 
+/* Six named hues. Two rules govern them:
+   1. an accent used as TEXT or as a THIN LINE darkens in light mode (a bright hue on porcelain
+      is unreadable), so --track/--brass/--rose/--plum are scheme-adaptive;
+   2. a bright hue survives only as a solid FILL, with its own on-color (--brass-fill/--on-brass,
+      --rose-fill/--on-rose). Ratios are measured in tools/audit.mjs, not eyeballed. */
 :root{
   --ink:#0E1A18;
   --porcelain:#E9EEEA;
   --track:#4FA3A5;
   --brass:#C9922F;
-  --rose:#D0566B;
-  --plum:#6E5A78;
+  --rose:#DE6E81;
+  --plum:#9A86A3;
+
+  --brass-fill:#C9922F;   --on-brass:#14110A;
+  --rose-fill:#B23A52;    --on-rose:#E9EEEA;
+  --rose-tint:rgba(222,110,129,.14);
+  --scrim:rgba(5,10,9,.72);
+  --cam:#050A09;
 
   --bg:#0E1A18;
   --sheet:#13211F;
@@ -16,6 +27,13 @@
   --hair:rgba(220,230,226,.12);
   --tint:rgba(220,230,226,.05);
   --num:#DCE6E2;
+
+  /* Heatmap ladder: five discrete steps, no opacity tricks (an opacity wash out is invisible
+     against a light background). lv0 is --tint. */
+  --heat-1:#1D3A38;
+  --heat-2:#2C5B59;
+  --heat-3:#3D8184;
+  --heat-4:#4FA3A5;
 
   --display:"Barlow Semi Condensed","Helvetica Neue",sans-serif;
   --ui:"IBM Plex Sans",-apple-system,"Helvetica Neue",sans-serif;
@@ -29,19 +47,32 @@
 
 @media (prefers-color-scheme:light){
   :root{
+    --track:#22686A;
+    --brass:#7C5A1A;
+    --rose:#A8324A;
+    --plum:#5E4A68;
+    --rose-fill:#9E2C42;
+    --rose-tint:rgba(168,50,74,.10);
+
     --bg:#E9EEEA;
     --sheet:#F2F5F2;
     --text:#0E1A18;
-    --muted:#5B6965;
+    --muted:#4E5B57;
     --hair:rgba(14,26,24,.11);
     --tint:rgba(14,26,24,.045);
     --num:#0E1A18;
+
+    --heat-1:#C3D6D4;
+    --heat-2:#8FB6B4;
+    --heat-3:#4F8B8D;
+    --heat-4:#22686A;
   }
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none}
-body{background:var(--bg);color:var(--text);font:16px/1.45 var(--ui);transition:background .2s linear,color .2s linear}
+body{background:var(--bg);color:var(--text);font:16px/1.45 var(--ui);transition:background .2s linear,color .2s linear;
+  -webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
 a{color:inherit;text-decoration:none}
 :focus-visible{outline:2px solid var(--track);outline-offset:2px}
@@ -55,6 +86,7 @@ a{color:inherit;text-decoration:none}
 .grow{flex:1;min-height:0}
 .center{align-items:center;justify-content:center;text-align:center}
 .h1{font:600 21px/1.25 var(--ui);margin:0}
+.h2{font:600 16px/1.3 var(--ui);margin:0 0 6px;letter-spacing:.01em}
 .sub{color:var(--muted);font-size:13px}
 .mono{font:12px/1.5 ui-monospace,"SF Mono",Menlo,monospace}
 .num{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums}
@@ -74,7 +106,7 @@ a{color:inherit;text-decoration:none}
 /* ── update banner ── */
 #banner:empty{display:none}
 #banner{position:fixed;top:var(--sat);left:0;right:0;z-index:70}
-#banner>div{margin:0 var(--sal) 0 var(--sar);padding:11px 16px;background:var(--brass);color:#14110A;
+#banner>div{margin:0 var(--sal) 0 var(--sar);padding:11px 16px;background:var(--brass-fill);color:var(--on-brass);
   font-weight:600;font-size:15px;cursor:pointer}
 body.banner-on #view{top:calc(var(--sat) + 45px)}
 
@@ -83,7 +115,7 @@ body.banner-on #view{top:calc(var(--sat) + 45px)}
   padding:12px 22px;font-weight:600;font-size:16px;transition:opacity .12s linear,transform .12s ease-out}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:var(--text);color:var(--bg);border-color:transparent}
-.btn-warn{background:var(--rose);color:#fff;border-color:transparent}
+.btn-warn{background:var(--rose-fill);color:var(--on-rose);border-color:transparent}
 .btn-quiet{background:none;border-color:transparent;color:var(--muted)}
 .btn-big{width:100%;padding:17px;font-size:17px}
 .btn[disabled]{opacity:.4}
@@ -94,20 +126,29 @@ select,input[type=text],input[type=number],textarea{background:var(--tint);borde
   border-radius:10px;padding:10px 12px;width:100%;appearance:none}
 select{padding-right:30px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%237F918C' stroke-width='1.8' stroke-linecap='round'/></svg>");
   background-repeat:no-repeat;background-position:right 11px center}
-input[type=range]{width:100%;accent-color:var(--track);height:28px}
-input[type=checkbox]{width:22px;height:22px;accent-color:var(--track)}
-label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;
-  border-bottom:1px solid var(--hair);font-size:15px}
+@media (prefers-color-scheme:light){
+  select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%234E5B57' stroke-width='1.8' stroke-linecap='round'/></svg>")}
+}
+/* 44pt is the iPhone HIG minimum for anything you drag or tap with a thumb. The drawn control
+   stays slim; the element box is what your finger hits. */
+input[type=range]{width:100%;accent-color:var(--track);height:44px}
+input[type=checkbox]{width:26px;height:26px;accent-color:var(--track)}
+label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;
+  padding:11px 0;border-bottom:1px solid var(--hair);font-size:15px}
 label.tog .sub{display:block;font-size:12px}
 
 /* ── camera + overlay ── */
-.camwrap{position:relative;background:#050A09;flex:1;min-height:0;overflow:hidden}
+.camwrap{position:relative;background:var(--cam);flex:1;min-height:0;overflow:hidden}
 .camwrap video{display:block;width:100%;height:100%;object-fit:cover}
 .camwrap canvas{position:absolute;inset:0;width:100%;height:100%}
+/* The camera surface is always near-black, so it gets its own text ramp in both schemes —
+   a light-mode --muted on it would be unreadable. */
 .camoff{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:14px;padding:24px;text-align:center;color:var(--muted);font-size:14px;background:#050A09}
+  gap:14px;padding:24px;text-align:center;color:#8A9C97;font-size:14px;background:var(--cam)}
+.camoff h3{margin:0 0 6px;color:var(--porcelain);font:600 16px/1.3 var(--ui)}
+.camoff ol{margin:0;padding-left:18px;font-size:13px;line-height:1.55;text-align:left}
 .pill{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:8px;
-  padding:6px 12px;border-radius:999px;background:rgba(5,10,9,.62);color:#DCE6E2;font-size:13px;
+  padding:6px 12px;border-radius:999px;background:var(--scrim);color:var(--porcelain);font-size:13px;
   font-variant-numeric:tabular-nums}
 .pill i{width:7px;height:7px;border-radius:50%;background:var(--track)}
 .pill.bad i{background:var(--rose)}
@@ -119,11 +160,16 @@ label.tog .sub{display:block;font-size:12px}
 .bar{height:5px;background:var(--tint);border-radius:3px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--track);transition:width .3s linear}
 .bar i.bad{background:var(--rose)}
-.chk{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--hair);font-size:14px}
-.chk .mk{width:16px;flex:none;text-align:center;font-weight:700;color:var(--muted)}
+.chk{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
+.chk .mk{width:18px;height:18px;flex:none;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.chk .mk svg{width:16px;height:16px;display:block}
 .chk.ok .mk{color:var(--track)}
 .chk.bad .mk{color:var(--rose)}
-.chk .why{color:var(--muted);font-size:12px;margin-left:auto;text-align:right}
+.chk.bad>.t{color:var(--text)}
+.chk.wait{opacity:.72}
+.chk .t{flex:0 1 auto}
+.chk .why{color:var(--muted);font-size:12px;margin-left:auto;text-align:right;min-width:0;overflow-wrap:anywhere}
+.chk.bad .why{color:var(--rose)}
 .recos{padding:10px 16px;background:var(--sheet);border-top:1px solid var(--hair);font-size:14px}
 .recos h3{margin:0 0 6px;font-size:14px;font-weight:600}
 .recos ol{margin:0;padding-left:18px;color:var(--muted)}
@@ -153,7 +199,9 @@ label.tog .sub{display:block;font-size:12px}
   color:var(--muted);font-variant-numeric:tabular-nums}
 .topline .clock{justify-self:start}
 .topline .endslot{justify-self:end}
-.warnbox{padding:9px 14px;background:rgba(208,86,107,.14);color:var(--rose);font-size:14px;border-top:1px solid var(--rose)}
+/* The live phase label is this screen's heading: it says what the app is doing right now. */
+#phaseLabel{margin:0;font:600 13px/1.25 var(--ui);letter-spacing:.02em;color:inherit}
+.warnbox{padding:9px 14px;background:var(--rose-tint);color:var(--rose);font-size:14px;border-top:1px solid var(--rose-fill)}
 .warnbox[hidden]{display:none}
 
 /* ── summary ── */
@@ -179,6 +227,15 @@ label.tog .sub{display:block;font-size:12px}
 .todaytotal .num{font-size:80px;line-height:.9}
 .soon{padding:26px 16px;color:var(--muted);font-size:15px}
 
+/* ── badges (placeholder) ── */
+.bd-list{padding:8px 0 20px}
+.bd-row{display:flex;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--hair);min-height:44px}
+.bd-ic{width:22px;height:22px;flex:none;color:var(--muted)}
+.bd-ic svg{width:22px;height:22px;display:block}
+.bd-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.bd-txt b{font-weight:600;font-size:15px}
+.bd-rule{color:var(--muted);font-size:13px;line-height:1.45}
+
 /* ── debug ── */
 .dbg{flex:1;min-height:0;overflow:auto;padding:10px 14px calc(20px + var(--sab));
   font:12px/1.45 ui-monospace,"SF Mono",Menlo,monospace}
@@ -190,3 +247,12 @@ label.tog .sub{display:block;font-size:12px}
 .field{margin:9px 0}
 .field>label{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:3px}
 .field>label b{color:var(--text);font-variant-numeric:tabular-nums}
+
+/* ── motion ──
+   Every animation in the app confirms an action Tal already took, and all of them are color or
+   opacity except two: the button press scale and the readiness meter sliding to width. Those two
+   are what reduced-motion users lose; the state changes themselves stay visible. */
+@media (prefers-reduced-motion:reduce){
+  .btn:active{transform:none}
+  .bar i{transition:none}
+}

@@ -18,12 +18,16 @@ export default function settingsView(host) {
 
   host.innerHTML = `
     <div class="list">
-      <div class="pad"><h2 class="h1" style="margin:14px 0 4px">Depth preset</h2>
+      <div class="pad"><h1 class="h1" style="margin:16px 0 2px">Settings</h1>
+        <p class="sub" style="margin:0 0 10px">How the camera decides a rep counted. Nothing here leaves this phone.</p>
+      </div>
+      <div class="rule"></div>
+      <div class="pad"><h2 class="h2">Depth preset</h2>
         <p class="sub" style="margin:0 0 8px">Relaxed counts a shallower bend. Strict wants an almost straight arm at the top.</p>
         ${SEL('preset', [['relaxed', 'Relaxed'], ['standard', 'Standard'], ['strict', 'Strict']], s.preset)}
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 8px">Thresholds</h2>
+      <div class="pad"><h2 class="h2">Thresholds</h2>
         <div class="field"><label for="top">Top (lockout) angle <b id="topOut"></b></label>
           <input type="range" id="top" min="120" max="178" step="1"></div>
         <div class="field"><label for="bottom">Bottom angle <b id="bottomOut"></b></label>
@@ -34,7 +38,7 @@ export default function settingsView(host) {
           <span class="grow"></span><span class="sub" id="ovl"></span></div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Counting</h2>
+      <div class="pad"><h2 class="h2">Counting</h2>
         <label class="tog"><span>Clean reps only<span class="sub">skip flagged reps in the count</span></span><input type="checkbox" id="cleanOnly"></label>
         <label class="tog"><span>Auto-start on plank<span class="sub">begin the countdown once the plank is held</span></span><input type="checkbox" id="autoArm"></label>
         <label class="tog"><span>End set after idle<span class="sub" id="idleLbl"></span></span>
@@ -46,14 +50,14 @@ export default function settingsView(host) {
         </div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Feedback</h2>
+      <div class="pad"><h2 class="h2">Feedback</h2>
         ${SEL('voice', [['every', 'Say every rep'], ['milestones', 'Say every fifth'], ['off', 'Silent']], s.voice)}
         <label class="tog"><span>Beeps</span><input type="checkbox" id="beeps"></label>
         <label class="tog"><span>Haptics<span class="sub" id="vibHint"></span></span><input type="checkbox" id="haptics"></label>
         <label class="tog"><span>Show skeleton during a set</span><input type="checkbox" id="skeletonOnSet"></label>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Camera and model</h2>
+      <div class="pad"><h2 class="h2">Camera and model</h2>
         ${SEL('camera', [['environment', 'Back camera (side view)'], ['user', 'Front camera']], s.camera)}
         <div class="spacer"></div>
         ${SEL('model', [['lite', 'Pose lite — fast, usually enough'], ['full', 'Pose full — better in bad light']], s.model)}
@@ -63,7 +67,7 @@ export default function settingsView(host) {
         <label class="tog"><span>Manual tap-to-log<span class="sub">no camera at all</span></span><input type="checkbox" id="manualMode"></label>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Goals</h2>
+      <div class="pad"><h2 class="h2">Goals</h2>
         <div class="field"><label for="gdaily">Daily <b id="gdailyOut"></b></label>
           <input type="range" id="gdaily" min="0" max="300" step="5"></div>
         <div class="field"><label for="gweekly">Weekly <b id="gweeklyOut"></b></label>
@@ -79,7 +83,7 @@ export default function settingsView(host) {
         <div class="kv"><span>passes left this week</span><b class="num" id="passesLeft">…</b></div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Data</h2>
+      <div class="pad"><h2 class="h2">Data</h2>
         <div class="kv"><span>saved sets on this phone</span><b class="num" id="setCount">…</b></div>
         <div class="kv"><span>persistent storage</span><b id="persist">…</b></div>
         <div class="row" style="margin-top:10px">
@@ -90,7 +94,7 @@ export default function settingsView(host) {
         <div class="sub" style="margin-top:8px" id="dataMsg"></div>
       </div>
       <div class="rule"></div>
-      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Diagnostics</h2>
+      <div class="pad"><h2 class="h2">Diagnostics</h2>
         <div class="mono" id="plat" style="white-space:pre-wrap"></div>
         <div class="row" style="margin-top:10px">
           <a class="btn grow" href="#/debug">Counter lab</a>

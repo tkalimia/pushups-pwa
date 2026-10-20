@@ -2,7 +2,7 @@
 //   node tools/shots.mjs <url> <out.png> [--dark] [--light] [--step <js>] [--wait <ms>] [--click <selector>]
 // Chrome flags include a fake camera device, so #/train reaches the real setup layout.
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -28,7 +28,8 @@ while (argv.length) {
   else throw new Error('unknown flag ' + f);
 }
 
-const profile = join(tmpdir(), 'pushups-shot-profile');
+// Fresh profile per run — a leftover service worker would serve its own stale precache.
+const profile = mkdtempSync(join(tmpdir(), 'pushups-shot-'));
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
   `--window-size=${W},${H}`, `--user-agent=${UA}`,
@@ -82,6 +83,8 @@ ws.onmessage = (ev) => {
 await send('Page.enable');
 await send('Runtime.enable');
 await send('Log.enable');
+await send('Network.enable');
+await send('Network.setCacheDisabled', { cacheDisabled: true });
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: true });
 await send('Network.setUserAgentOverride', { userAgent: UA });
 if (scheme) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
@@ -92,7 +95,7 @@ for (const [kind, arg] of steps) {
   if (kind === 'wait') { await sleep(Number(arg)); continue; }
   const expr = kind === 'click'
     ? `(() => { const el = document.querySelector(${JSON.stringify(arg)}); if (!el) throw new Error('no element ' + ${JSON.stringify(arg)}); el.click(); return 'clicked'; })()`
-    : `(async () => { const v = await (${arg}); return typeof v === 'string' ? v : JSON.stringify(v); })()`;
+    : `(async () => { let f = (${arg}); if (typeof f === 'function') f = f(); const v = await f; return typeof v === 'string' ? v : JSON.stringify(v); })()`;
   const res = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
   if (res.exceptionDetails) {
     console.error('  [step failed]', arg, res.exceptionDetails.exception?.description || '');
