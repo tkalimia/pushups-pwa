@@ -94,8 +94,10 @@ a{color:inherit;text-decoration:none}
 
 /* ── update banner ── */
 #banner:empty{display:none}
+#banner{position:fixed;top:var(--sat);left:0;right:0;z-index:70}
 #banner>div{margin:0 var(--sal) 0 var(--sar);padding:11px 16px;background:var(--brass);color:#14110A;
   font-weight:600;font-size:15px;cursor:pointer}
+body.banner-on #view{top:calc(var(--sat) + 45px)}
 
 /* ── controls ── */
 .btn{border:1px solid var(--hair);background:var(--tint);color:var(--text);border-radius:999px;
@@ -150,7 +152,7 @@ label.tog .sub{display:block;font-size:12px}
 
 /* ── counter ── */
 .counter{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
-.counter[data-phase="setup"] .camwrap{flex:none;height:42%}
+.counter[data-phase="setup"] .camwrap{flex:1 1 42%;min-height:168px}
 .counter[data-phase="set"] .camwrap,.counter[data-phase="countdown"] .camwrap{flex:none;height:26%}
 .counter[data-phase="summary"] .camwrap{display:none}
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -1652,10 +1654,16 @@ function showBanner(reload) {
   const box = document.createElement('div');
   box.textContent = 'Update available — tap to reload';
   box.addEventListener('click', () => {
-    banner.replaceChildren();
+    hideBanner();
     reload();
   });
   banner.replaceChildren(box);
+  document.body.classList.add('banner-on');
+}
+
+function hideBanner() {
+  banner.replaceChildren();
+  document.body.classList.remove('banner-on');
 }
 
 // ── lifecycle ──

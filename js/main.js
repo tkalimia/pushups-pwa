@@ -45,10 +45,16 @@ function showBanner(reload) {
   const box = document.createElement('div');
   box.textContent = 'Update available — tap to reload';
   box.addEventListener('click', () => {
-    banner.replaceChildren();
+    hideBanner();
     reload();
   });
   banner.replaceChildren(box);
+  document.body.classList.add('banner-on');
+}
+
+function hideBanner() {
+  banner.replaceChildren();
+  document.body.classList.remove('banner-on');
 }
 
 // ── lifecycle ──
