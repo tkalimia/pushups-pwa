@@ -1,0 +1,6 @@
+.DS_Store
+*.mov
+*.mp4
+tools/base-url
+tools/stamp.txt
+tools/precache.txt

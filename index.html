@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0E1A18" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#E9EEEA" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pushups">
+<title>Pushups</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="banner"></div>
+<main id="view"></main>
+<nav id="tabs" aria-label="Sections">
+  <a href="#/today" data-tab="today"><span class="ic">◍</span>Today</a>
+  <a href="#/train" data-tab="train"><span class="ic">↑</span>Train</a>
+  <a class="todo" href="#/progress" data-tab="progress"><span class="ic">◠</span>Progress</a>
+  <a class="todo" href="#/badges" data-tab="badges"><span class="ic">✦</span>Badges</a>
+  <a href="#/settings" data-tab="settings"><span class="ic">⚙</span>Settings</a>
+</nav>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(function (r) { window.__swReg = r; });
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
