@@ -1,4 +1,4 @@
-const CACHE = 'pushups-v-2610202010';
+const CACHE = 'pushups-v-2610202014';
 const PRECACHE = [
   "css/app.css",
   "fonts/barlow-semi-condensed.woff2",
