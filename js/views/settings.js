@@ -2,7 +2,7 @@ import { load, save, params, setParam, resetParams, PRESETS } from '../settings.
 import { exportJSON, importJSON, countSets } from '../db.js';
 import { forgetCache, loadGoals, loadPasses, loadStreak, passesThisWeek, saveGoals, saveStreak } from '../goals.js';
 import { dayKey } from '../stats.js';
-import { download } from '../util.js';
+import { download, fmtInt } from '../util.js';
 import { platformInfo, persistentStatus, requestPersistent, tryBadging } from '../upgrade.js';
 
 const SEL = (id, opts, val) => `<select id="${id}">` +
@@ -175,6 +175,8 @@ export default function settingsView(host) {
   });
 
   q('#vibHint').textContent = navigator.vibrate ? 'supported here' : 'not exposed by iOS Safari';
+  // a switch that cannot do anything on the only device this runs on should not look live
+  q('#haptics').disabled = !navigator.vibrate;
 
   function syncAll() {
     const cur = load();
@@ -230,7 +232,7 @@ export default function settingsView(host) {
     saveStreak({ passesPerWeek: Number(e.target.value) }).then(paintPasses);
   });
 
-  countSets().then((n) => { q('#setCount').textContent = String(n); }).catch(() => { q('#setCount').textContent = '?'; });
+  countSets().then((n) => { q('#setCount').textContent = fmtInt(n); }).catch(() => { q('#setCount').textContent = '?'; });
   persistentStatus().then(async (ok) => {
     q('#persist').textContent = ok ? 'granted' : 'not granted';
     if (!ok) {
@@ -261,7 +263,7 @@ export default function settingsView(host) {
       ? 'Imported ' + res.added + ' sets' + (res.metaWritten ? ' and ' + res.metaWritten + ' settings records' : '') + '.'
       : 'Import failed: ' + res.error;
     if (res.ok) {
-      countSets().then((n) => { q('#setCount').textContent = String(n); });
+      countSets().then((n) => { q('#setCount').textContent = fmtInt(n); });
       forgetCache();
     }
   });

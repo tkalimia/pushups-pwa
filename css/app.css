@@ -26,6 +26,7 @@
   --muted:#7F918C;
   --hair:rgba(220,230,226,.12);
   --tint:rgba(220,230,226,.05);
+  --sw-off:rgba(220,230,226,.18);
   --num:#DCE6E2;
 
   /* Heatmap ladder: five discrete steps, no opacity tricks (an opacity wash out is invisible
@@ -60,6 +61,7 @@
     --muted:#4E5B57;
     --hair:rgba(14,26,24,.11);
     --tint:rgba(14,26,24,.045);
+    --sw-off:rgba(14,26,24,.16);
     --num:#0E1A18;
 
     --heat-1:#C3D6D4;
@@ -94,14 +96,20 @@ a{color:inherit;text-decoration:none}
 .spacer{height:14px}
 
 /* ── tab bar ── */
-#tabs{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:flex-end;
-  padding:7px 2px calc(7px + var(--sab));background:var(--sheet);border-top:1px solid var(--hair);
+#tabs{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:stretch;
+  padding:0 2px var(--sab);background:var(--sheet);border-top:1px solid var(--hair);
   font-size:11px;line-height:1.05;text-align:center;z-index:60}
-#tabs a{flex:1;color:var(--muted);transition:color .15s linear}
-#tabs a .ic{display:block;height:20px;margin-bottom:4px}
-#tabs a .ic svg{width:19px;height:19px;display:block;margin:0 auto}
+/* The anchor carries its own padding: with it on the bar instead, the tap target was 36pt tall
+   and the 8pt of dead strip under each label still belonged to the nav, not to the tab. */
+#tabs a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:52px;padding:6px 0 5px;color:var(--muted);transition:color .15s linear}
+/* The markup puts a bare <svg> in the anchor. Without an explicit box an SVG with only a viewBox
+   is 150px tall, which turned the nav into a 109px slab and swallowed the bottom of every screen. */
+#tabs a svg{width:20px;height:20px;display:block;margin-bottom:4px}
 #tabs a[aria-current="true"]{color:var(--text)}
-#tabs a.todo{opacity:.45}
+/* Badges is the only tab with no screen behind it yet. .45 read as disabled on a control that
+   does work, so it sits just above that. */
+#tabs a.todo{opacity:.62}
 
 /* ── update banner ── */
 #banner:empty{display:none}
@@ -132,7 +140,18 @@ select{padding-right:30px;background-image:url("data:image/svg+xml;utf8,<svg xml
 /* 44pt is the iPhone HIG minimum for anything you drag or tap with a thumb. The drawn control
    stays slim; the element box is what your finger hits. */
 input[type=range]{width:100%;accent-color:var(--track);height:44px}
-input[type=checkbox]{width:26px;height:26px;accent-color:var(--track)}
+/* Every checkbox in the app is a setting, and a square reads as a to-do rather than a toggle.
+   This is the system switch silhouette — 46×28, knob 22 — in palette colours. The row stays the
+   tap target, so the switch itself never has to be 44pt. */
+.tog input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:none;width:46px;height:28px;
+  border:0;border-radius:999px;background:var(--sw-off);position:relative;cursor:pointer;
+  transition:background .15s linear}
+.tog input[type=checkbox]::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;
+  border-radius:50%;background:var(--porcelain);box-shadow:0 1px 2px rgba(0,0,0,.3);
+  transition:transform .15s linear}
+.tog input[type=checkbox]:checked{background:var(--track)}
+.tog input[type=checkbox]:checked::after{transform:translateX(18px)}
+.tog input[type=checkbox]:disabled{opacity:.42;cursor:default}
 label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;
   padding:11px 0;border-bottom:1px solid var(--hair);font-size:15px}
 label.tog .sub{display:block;font-size:12px}
@@ -156,6 +175,18 @@ label.tog .sub{display:block;font-size:12px}
 
 /* ── setup ── */
 .statusbar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--hair);font-size:13px}
+/* manual mode has no sensor to instrument: one honest sentence replaces the readiness bar and the
+   four framing checks */
+.setupnote{padding:14px 0 4px;font-size:14px;line-height:1.5;color:var(--muted)}
+.setupnote b{color:var(--text);font-weight:600}
+/* A short manual setup block would otherwise strand itself at the top of a tall screen. Auto
+   margins centre it without the clipped-overflow that justify-content:center causes in a scroller. */
+.setuplist{display:flex;flex-direction:column}
+.setupbody{margin:auto 0}
+.ctxhead{padding:16px 16px 4px;font-size:13px;color:var(--muted)}
+.ctxrow{display:flex;align-items:baseline;gap:12px;padding:10px 16px;border-bottom:1px solid var(--hair)}
+.ctxnum{font-size:22px;min-width:46px}
+.ctxmeta{flex:1;min-width:0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .statusbar .bar{flex:1}
 .bar{height:5px;background:var(--tint);border-radius:3px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--track);transition:width .3s linear}
@@ -167,6 +198,9 @@ label.tog .sub{display:block;font-size:12px}
 .chk.bad .mk{color:var(--rose)}
 .chk.bad>.t{color:var(--text)}
 .chk.wait{opacity:.72}
+/* The section rule under the checks would otherwise sit on top of this border and read as a
+   formatting slip rather than a divider. */
+#checks .chk:last-child{border-bottom:0}
 .chk .t{flex:0 1 auto}
 .chk .why{color:var(--muted);font-size:12px;margin-left:auto;text-align:right;min-width:0;overflow-wrap:anywhere}
 .chk.bad .why{color:var(--rose)}
@@ -177,7 +211,18 @@ label.tog .sub{display:block;font-size:12px}
 
 /* ── counter ── */
 .counter{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
-.counter[data-phase="setup"] .camwrap{flex:1 1 42%;min-height:168px}
+/* Mid-set the tab bar is one mis-tap from leaving the screen, and every pixel of it belongs to the
+   number you are trying to read from the floor. It goes; the view takes the full height. */
+body.in-set #tabs{display:none}
+body.in-set #view{bottom:0}
+body.in-set .counter{padding-bottom:var(--sab)}
+body.in-set .corr .step{width:88px;height:68px;font-size:32px}
+/* The preview is a reference, not the content of this screen: the four checks, the preset and the
+   flip button are what you came here to reach. At flex:1 they fought the video for space and lost —
+   the video took 64% and clipped two thirds of the checks below the fold. */
+.counter[data-phase="setup"] .camwrap{flex:0 1 38%;min-height:168px}
+/* the clock only has something to say once a set is running — "--:--" is a placeholder, not a state */
+.counter[data-phase="setup"] .topline .clock{visibility:hidden}
 .counter[data-phase="set"] .camwrap,.counter[data-phase="countdown"] .camwrap{flex:none;height:26%}
 .counter[data-phase="summary"] .camwrap{display:none}
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -187,10 +232,13 @@ label.tog .sub{display:block;font-size:12px}
 .cta{padding:10px 16px 12px;background:var(--bg);border-top:1px solid var(--hair)}
 .cta .sub{margin-top:7px;font-size:12px;line-height:1.35}
 #repnum{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
-  font-size:min(46vh,400px,calc(176vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
+  font-size:min(50vh,410px,calc(182vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
 #repnum.tick{color:var(--brass)}
 #cdnum{font-family:var(--display);font-weight:700;font-size:min(70vw,38vh,320px);line-height:.9;color:var(--brass)}
 #chip{font-size:14px;color:var(--muted);text-align:center;min-height:20px;margin-top:6px}
+/* the one piece of context worth having mid-set: what this set is adding to the day */
+.dayline{margin-top:4px;text-align:center;color:var(--muted);font:600 13px/1.3 var(--ui);
+  letter-spacing:.02em;font-variant-numeric:tabular-nums;min-height:18px}
 .hairline{height:3px;background:transparent;transition:background .2s linear}
 .hairline.on{background:var(--rose)}
 .corr{display:flex;align-items:center;justify-content:center;gap:16px;padding:8px 0 4px}
@@ -205,7 +253,12 @@ label.tog .sub{display:block;font-size:12px}
 .warnbox[hidden]{display:none}
 
 /* ── summary ── */
-.sheet{flex:1;min-height:0;align-self:stretch;overflow:auto;background:var(--sheet);padding:14px 16px calc(16px + var(--sab))}
+.sheet{flex:1;min-height:0;align-self:stretch;overflow:auto;background:var(--sheet);
+  display:flex;flex-direction:column;padding:14px 16px 0}
+/* Saving is the whole point of this screen, so the buttons sit at the bottom of the sheet within
+   thumb reach — pinned there when the recap is short, stuck there when it scrolls. */
+.sumcta{position:sticky;bottom:0;margin-top:auto;background:var(--sheet);
+  border-top:1px solid var(--hair);padding:12px 0 10px}
 .finum{font:700 92px/1 var(--display);text-align:center;font-variant-numeric:tabular-nums;color:var(--num)}
 .finum input{all:unset;display:block;width:100%;text-align:center;font:inherit;color:inherit}
 .kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
@@ -218,7 +271,9 @@ label.tog .sub{display:block;font-size:12px}
 .flags .info{border-color:var(--plum);color:var(--plum)}
 
 /* ── lists ── */
-.list{flex:1;min-height:0;overflow:auto;padding-bottom:calc(14px + var(--sab))}
+/* #view already stops above the tab bar, and the bar absorbs the home-indicator inset — adding
+   --sab in here too just stranded 34px of dead space at the foot of every scrolling screen. */
+.list{flex:1;min-height:0;overflow:auto;padding-bottom:14px}
 .item{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:12px 16px;
   border-bottom:1px solid var(--hair)}
 .item .num{font-size:21px}

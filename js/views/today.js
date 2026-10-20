@@ -5,13 +5,16 @@
 import { deleteSet, listSets, saveSet, updateSet } from '../db.js';
 import { goalStatus, usePass } from '../goals.js';
 import { byDay, dayFromKey, gaps, records } from '../stats.js';
-import { clamp, dayOf, fmtClock, fmtDay, h, pct, sum, today } from '../util.js';
+import { clamp, dayOf, fmtClock, fmtDay, fmtInt, goalText, h, pct, sum, today } from '../util.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const SIZE = 88;
 const STROKE = 7;
 const R = (SIZE - STROKE) / 2 - 2;
 const C = 2 * Math.PI * R;
+/* A day of pushups can run to 150 near-identical rows. Showing them all buries the four numbers
+   that matter and puts a delete button on every one of them. */
+const PREVIEW_SETS = 6;
 
 const SKELETON = `
   <div class="list">
@@ -163,7 +166,7 @@ export default async function todayView(host, ctx) {
     .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
   const dayReps = sum(mine.map(repsOf));
 
-  els.total.textContent = String(dayReps);
+  els.total.textContent = fmtInt(dayReps);
 
   const daily = status ? status.daily : null;
   const goal = daily ? daily.goal : 0;
@@ -195,7 +198,7 @@ export default async function todayView(host, ctx) {
     els.goalNote.className = 'tg-goalnote' + (wasMet ? ' met' : '');
     els.goalNote.textContent = wasMet
       ? 'goal met'
-      : left + ' to go · goal ' + d.goal;
+      : fmtInt(left) + ' to go · goal ' + fmtInt(d.goal);
   }
 
   function paintStreak(st, wasMet, dayKeyStr) {
@@ -247,14 +250,14 @@ export default async function todayView(host, ctx) {
   function paintMinis(st, dayMap, hist, dayKeyStr) {
     const rows = [];
     if (st) {
-      rows.push(['this week', st.weekly.reps + ' of ' + st.weekly.goal + ' · ' + pct(st.weekly.pct)]);
+      rows.push(['this week', goalText(st.weekly.reps, st.weekly.goal)]);
       let month = 0;
       for (const [k, d] of dayMap) if (k.slice(0, 7) === dayKeyStr.slice(0, 7)) month += d.reps;
-      rows.push(['this month', String(month) + ' reps']);
-      rows.push(['this year', st.yearly.reps + ' of ' + st.yearly.goal + ' · ' + pct(st.yearly.pct)]);
+      rows.push(['this month', fmtInt(month) + ' reps']);
+      rows.push(['this year', goalText(st.yearly.reps, st.yearly.goal)]);
     }
     if (hist) {
-      rows.push(['lifetime', hist.lifetimeReps + ' reps · ' + hist.lifetimeSets + ' sets']);
+      rows.push(['lifetime', fmtInt(hist.lifetimeReps) + ' reps · ' + fmtInt(hist.lifetimeSets) + ' sets']);
     }
     els.minis.replaceChildren();
     if (!rows.length) return;   // the note under the date already says what failed
@@ -276,18 +279,32 @@ export default async function todayView(host, ctx) {
       els.sets.append(h('p', { class: 'soon tg-empty' }, 'nothing to list — the saved sets could not be read.'));
       return;
     }
-    els.setsHead.append(h('div', { class: 'tg-head' },
-      'today’s sets' + (list.length ? ' · ' + list.length : '')));
+    const kept = sum(list.map(repsOf));
+    els.setsHead.append(h('div', { class: 'tg-head tg-sethead' },
+      h('span', null, 'today’s sets'),
+      h('span', { class: 'tg-headnum' },
+        list.length ? list.length + ' · ' + fmtInt(kept) + ' reps' : 'none')));
     if (!list.length) {
       els.sets.append(h('p', { class: 'soon tg-empty' },
         'no sets yet today. Train → start set, or add a missed day below.'));
       return;
     }
-    els.sets.replaceChildren(...list.map(setRow));
+    let all = false;
+    const draw = () => {
+      els.sets.replaceChildren();
+      const shown = all ? list : list.slice(0, PREVIEW_SETS);
+      for (const s of shown) els.sets.append(setRow(s));
+      if (list.length > PREVIEW_SETS) {
+        const btn = h('button', { class: 'tg-quietrow tg-showall', type: 'button' },
+          all ? 'show fewer' : 'show all ' + fmtInt(list.length) + ' sets');
+        btn.addEventListener('click', () => { all = !all; draw(); });
+        els.sets.append(btn);
+      }
+    };
+    draw();
     const det = sum(list.map(detectedOf));
-    const kept = sum(list.map(repsOf));
     els.foot.append(h('div', { class: 'tg-foot' },
-      'camera saw ' + det + ', you kept ' + kept + '.'));
+      'camera saw ' + fmtInt(det) + ', you kept ' + fmtInt(kept) + '.'));
   }
 
   function setRow(s) {
@@ -296,11 +313,10 @@ export default async function todayView(host, ctx) {
     const flagged = flagCount(s);
     const meta = fmtClock(s.startedAt || 0) + ' · ' + sourceLabel(s)
       + (flagged ? ' · ' + flagged + ' flagged' : '');
-    const num = h('span', { class: 'tg-setnum' }, String(repsOf(s)));
+    const num = h('span', { class: 'tg-setnum' }, fmtInt(repsOf(s)));
     const open = h('button', { class: 'tg-editbtn', type: 'button' },
       num, h('span', { class: 'tg-setmeta' }, meta));
-    const del = h('button', { class: 'btn btn-quiet tg-mini', type: 'button' }, 'delete');
-    line.append(open, del);
+    line.append(open);
 
     const editline = h('div', { class: 'tg-editline', hidden: true });
     const inp = h('input', {
@@ -309,20 +325,20 @@ export default async function todayView(host, ctx) {
     });
     const err = h('span', { class: 'tg-err' });
     const saveBtn = h('button', { class: 'btn btn-primary tg-mini', type: 'button' }, 'save');
+    // delete only ever appears next to the set you just opened — never on all 150 of them at once
+    const delBtn = h('button', { class: 'btn btn-quiet tg-mini tg-del', type: 'button' }, 'delete');
     const cancelBtn = h('button', { class: 'btn btn-quiet tg-mini', type: 'button' }, 'cancel');
-    editline.append(inp, saveBtn, cancelBtn, err);
+    editline.append(inp, saveBtn, delBtn, cancelBtn, err);
 
     function openEditor() {
       err.textContent = '';
       inp.value = String(repsOf(s));
       editline.hidden = false;
-      del.hidden = true;
       num.hidden = true;          // the meta line stays, so you can see which set you are fixing
       try { inp.focus({ preventScroll: false }); } catch { inp.focus(); }
     }
     function closeEditor() {
       editline.hidden = true;
-      del.hidden = false;
       num.hidden = false;
     }
 
@@ -341,14 +357,14 @@ export default async function todayView(host, ctx) {
         saveBtn.disabled = false;
       }
     });
-    del.addEventListener('click', async () => {
+    delBtn.addEventListener('click', async () => {
       if (!confirm('Delete this set?')) return;
-      del.disabled = true;
+      delBtn.disabled = true;
       try {
         await deleteSet(s.id);
         await rerender();
       } catch (e) {
-        del.disabled = false;
+        delBtn.disabled = false;
         err.textContent = 'could not delete: ' + errText(e);
         openEditor();
       }

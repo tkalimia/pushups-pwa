@@ -5,7 +5,7 @@ import { Counter } from '../counter.js';
 import { saveSet, listSetsForDay } from '../db.js';
 import { unlockAudio, speak, playBeep, playWarning, vibrate, announceRep, countdownVoice } from '../feedback.js';
 import { requestWakeLock, tryBadging } from '../upgrade.js';
-import { today, dayOf, fmtClock, clamp, pct } from '../util.js';
+import { today, dayOf, fmtClock, fmtInt, clamp, pct, h } from '../util.js';
 
 const LM = { HEAD: 0, SHOULDER: 11, ELBOW: 13, WRIST: 15, HIP: 23, ANKLE: 27 };
 const EMPTY_OUT = {
@@ -38,6 +38,7 @@ export default function train(host) {
   let plankSince = 0;
   let lastOut = EMPTY_OUT;
   let summary = null;
+  let dayBase = 0;
   let lightLevel = 120;
 
   const els = {};
@@ -115,25 +116,42 @@ export default function train(host) {
   function setPhase(p) {
     phase = p;
     els.root.dataset.phase = p;
+    /* Mid-set there is nothing else to navigate to, and the tab bar sits one thumb-slide from the
+       End button. It goes away and the number takes the whole screen. */
+    document.body.classList.toggle('in-set', p === 'set' || p === 'countdown');
   }
 
   function renderSetup() {
     setPhase('setup');
     els.overlay.style.display = '';
     lastOut = EMPTY_OUT;
-    els.phaseLabel.textContent = load().manualMode ? 'manual log' : 'set up';
+    const manual = load().manualMode;
+    els.phaseLabel.textContent = manual ? 'manual log' : 'set up';
     els.endBtn.hidden = true;
     els.camoff.hidden = true;
     clearWarn();
+    /* Manual mode never opens the camera, so the readiness bar, the fps readout, the four framing
+       checks, the depth preset and the flip button all describe a sensor that is switched off.
+       Showing them at zero is a screen of instrumentation about nothing. */
     els.stage.innerHTML = `
-      <div class="list">
+      <div class="list${manual ? ' setuplist' : ''}">
+        ${manual ? `
+        <div class="setupbody">
+          <div class="pad"><div class="setupnote">No camera. Tap <b>Start set</b>, then tap anywhere
+            once per rep — the count is exactly what you tap.</div></div>
+          <div id="manualCtx"></div>
+          <div class="pad">
+            <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">no camera, count with your thumb</span></span>
+              <input type="checkbox" id="manualChk"></label>
+          </div>
+        </div>` : `
         <div class="statusbar">
           <span class="bar grow"><i id="qbar"></i></span>
           <span class="mono" id="qtxt">0%</span>
           <span class="mono" id="fpstxt">0 fps</span>
         </div>
+        <div class="pad"><div id="checks"></div></div>
         <div class="pad">
-          <div id="checks"></div>
           <div class="rule"></div>
           <div class="row">
             <button class="btn btn-quiet" id="flipBtn">Use front camera</button>
@@ -144,9 +162,9 @@ export default function train(host) {
               <option value="strict">Strict depth</option>
             </select>
           </div>
-          <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">no camera, count with your thumb</span></span>
+          <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">skip the camera entirely</span></span>
             <input type="checkbox" id="manualChk"></label>
-        </div>
+        </div>`}
       </div>
       <div class="cta">
         <button class="btn btn-primary btn-big" id="startBtn">Start set</button>
@@ -156,7 +174,6 @@ export default function train(host) {
     els.qtxt = q('#qtxt');
     els.fpstxt = q('#fpstxt');
     els.checks = q('#checks');
-    const manual = load().manualMode;
     els.camwrap.style.display = manual ? 'none' : '';
     q('#manualChk').checked = manual;
     q('#manualChk').addEventListener('change', (e) => {
@@ -167,21 +184,45 @@ export default function train(host) {
       renderSetup();
     });
     els.presetSel = q('#presetSel');
-    els.presetSel.value = load().preset;
-    els.presetSel.addEventListener('change', (e) => {
-      save({ preset: e.target.value, overrides: {} });
-      counter.setParams(params());
-    });
-    q('#flipBtn').addEventListener('click', () => {
-      const next = load().camera === 'environment' ? 'user' : 'environment';
-      save({ camera: next });
-      startCamera(next);
-    });
+    if (els.presetSel) {
+      els.presetSel.value = load().preset;
+      els.presetSel.addEventListener('change', (e) => {
+        save({ preset: e.target.value, overrides: {} });
+        counter.setParams(params());
+      });
+      q('#flipBtn').addEventListener('click', () => {
+        const next = load().camera === 'environment' ? 'user' : 'environment';
+        save({ camera: next });
+        startCamera(next);
+      });
+    }
     q('#startBtn').addEventListener('click', beginSet);
-    q('#hint').textContent = load().autoArm
-      ? 'Auto-start is on: hold a steady plank and the countdown begins.'
-      : 'Set the phone on the floor 1.5–2.5 m away, side-on. Tap Start set, then get into position.';
+    q('#hint').textContent = manual
+      ? 'Every tap on the screen is one rep. − and + fix a mis-tap.'
+      : load().autoArm
+        ? 'Auto-start is on: hold a steady plank and the countdown begins.'
+        : 'Set the phone on the floor 1.5–2.5 m away, side-on. Tap Start set, then get into position.';
     paintChecks();
+    if (manual) paintManualCtx();
+  }
+
+  /** What today already holds — without this the manual setup screen is an empty page with a button. */
+  function paintManualCtx() {
+    const box = q('#manualCtx');
+    if (!box) return;
+    listSetsForDay(today()).then((list) => {
+      const sets = Array.isArray(list) ? list : [];
+      const reps = sets.reduce((a, s) => a + (Number(s.repsFinal) || 0), 0);
+      box.replaceChildren(h('div', { class: 'ctxhead' }, sets.length
+        ? 'today · ' + sets.length + ' sets · ' + fmtInt(reps) + ' reps'
+        : 'nothing logged today yet'));
+      for (const s of sets.slice(-3).reverse()) {
+        box.append(h('div', { class: 'ctxrow' },
+          h('b', { class: 'ctxnum num' }, fmtInt(Number(s.repsFinal) || 0)),
+          h('span', { class: 'ctxmeta' }, fmtClock(s.startedAt || 0)
+            + ' · ' + ((s.source === 'manual' || s.mode === 'manual') ? 'manual' : 'camera'))));
+      }
+    }).catch(() => { box.replaceChildren(); });
   }
 
   const SVGNS = 'http://www.w3.org/2000/svg';
@@ -313,24 +354,44 @@ export default function train(host) {
     els.endBtn.textContent = 'End';
     els.phaseLabel.textContent = 'counting';
     renderCountFace();
+    readDayBase();
     tickTimer = setInterval(tick, 250);
   }
 
-  function renderCountFace() {
-    els.overlay.style.display = load().skeletonOnSet ? '' : 'none';
-    els.stage.innerHTML = `
+  /* One face for both counting modes — the camera set and the tap set differ only in the chip. */
+  const COUNT_FACE = `
       <div id="repnum" class="num">0</div>
-      <div id="chip">get into plank</div>
+      <div id="chip"></div>
       <div class="corr">
         <button class="step" id="minus" aria-label="one fewer">−</button>
         <span class="n" id="adj"></span>
         <button class="step" id="plus" aria-label="one more">+</button>
-      </div>`;
+      </div>
+      <div id="dayline" class="dayline"></div>`;
+
+  function bindCountFace(chipText) {
+    els.stage.innerHTML = COUNT_FACE;
     els.repnum = q('#repnum');
     els.chip = q('#chip');
     els.adj = q('#adj');
-    q('#minus').addEventListener('click', () => correct(-1));
-    q('#plus').addEventListener('click', () => correct(1));
+    els.dayline = q('#dayline');
+    els.chip.textContent = chipText;
+    q('#minus').addEventListener('click', (e) => { e.stopPropagation(); correct(-1); });
+    q('#plus').addEventListener('click', (e) => { e.stopPropagation(); correct(1); });
+  }
+
+  /** The day total this set is being added to, so the count screen answers "how many today". */
+  function readDayBase() {
+    dayBase = 0;
+    listSetsForDay(today()).then((list) => {
+      dayBase = (list || []).reduce((a, s) => a + (Number(s.repsFinal) || 0), 0);
+      paintCount();
+    }).catch(() => { if (els.dayline) els.dayline.textContent = ''; });
+  }
+
+  function renderCountFace() {
+    els.overlay.style.display = load().skeletonOnSet ? '' : 'none';
+    bindCountFace('get into plank');
     paintCount();
   }
 
@@ -352,6 +413,7 @@ export default function train(host) {
       setTimeout(() => els.repnum && els.repnum.classList.remove('tick'), 170);
     }
     if (els.adj) els.adj.textContent = manualAdj === 0 ? '' : (manualAdj > 0 ? '+' + manualAdj : String(manualAdj));
+    if (els.dayline) els.dayline.textContent = 'today ' + fmtInt(dayBase + n);
     if (els.chip && !load().manualMode) {
       const flagged = lastOut.repsDetected - lastOut.cleanReps;
       els.chip.textContent = lastOut.armed
@@ -369,20 +431,9 @@ export default function train(host) {
     els.endBtn.hidden = false;
     els.endBtn.textContent = 'End';
     els.phaseLabel.textContent = 'manual log';
-    els.stage.innerHTML = `
-      <div id="repnum" class="num">0</div>
-      <div id="chip">tap here to log a rep</div>
-      <div class="corr">
-        <button class="step" id="minus" aria-label="one fewer">−</button>
-        <span class="n" id="adj"></span>
-        <button class="step" id="plus" aria-label="one more">+</button>
-      </div>`;
-    els.repnum = q('#repnum');
-    els.chip = q('#chip');
-    els.adj = q('#adj');
-    q('#minus').addEventListener('click', (e) => { e.stopPropagation(); correct(-1); });
-    q('#plus').addEventListener('click', (e) => { e.stopPropagation(); correct(1); });
+    bindCountFace('tap here to log a rep');
     tickTimer = setInterval(tick, 500);
+    readDayBase();
     paintCount();
   }
 
@@ -441,40 +492,49 @@ export default function train(host) {
   // ── summary ───────────────────────────────────────────────────
   function renderSummary() {
     const d = summary;
+    const manual = load().manualMode;
     els.phaseLabel.textContent = 'summary';
+    /* Manual sets have no camera, so "detected" is just the tap count and the tracking row would
+       report the quality of a sensor that never ran. */
     els.stage.innerHTML = `
       <div class="sheet">
         <div class="finum"><input id="finalIn" type="number" inputmode="numeric" min="0" max="999"></div>
-        <div class="sub" style="text-align:center;margin-top:-4px">final reps — correct it if the camera missed one</div>
+        <div class="sub" style="text-align:center;margin-top:-4px">${manual
+    ? 'reps — fix it if you double-tapped'
+    : 'final reps — correct it if the camera missed one'}</div>
         <div class="row" style="justify-content:center;margin:10px 0">
           <button class="step" id="sminus" aria-label="one fewer">−</button>
           <button class="step" id="splus" aria-label="one more">+</button>
         </div>
-        <div class="kv"><span>detected</span><b class="num" id="detOut"></b></div>
+        <div class="kv"><span>${manual ? 'taps' : 'detected'}</span><b class="num" id="detOut"></b></div>
         <div class="kv"><span>adjustment</span><b class="num" id="adjOut"></b></div>
         <div class="kv"><span>duration</span><b class="num" id="durOut"></b></div>
-        <div class="kv"><span>tracking</span><b class="num" id="qualOut"></b></div>
-        <div class="rule"></div>
+        ${manual ? '' : '<div class="kv"><span>tracking</span><b class="num" id="qualOut"></b></div>'}
+        <div class="kv"><span>today after this</span><b class="num" id="dayOut"></b></div>
         <div class="flags" id="flagRow"></div>
         <div class="field"><label for="notes">notes</label><textarea id="notes" rows="2" placeholder="optional"></textarea></div>
-        <div class="row" style="margin-top:14px">
+        <div class="sub" style="margin-top:4px;margin-bottom:12px" id="saveMsg"></div>
+        <div class="row sumcta">
           <button class="btn btn-quiet grow" id="again">New set</button>
           <button class="btn btn-primary grow" id="save">Save set</button>
         </div>
-        <div class="sub" style="margin-top:10px" id="saveMsg"></div>
       </div>`;
     const inp = q('#finalIn');
     inp.value = String(d.final);
     q('#detOut').textContent = String(d.detected);
     q('#durOut').textContent = Math.round(d.durationMs / 1000) + ' s';
-    q('#qualOut').textContent = d.quality.fpsMean + ' fps · ' + pct(d.quality.visMean) +
-      (d.quality.breaks ? ' · ' + d.quality.breaks + ' breaks' : '');
+    if (q('#qualOut')) {
+      q('#qualOut').textContent = d.quality.fpsMean + ' fps · ' + pct(d.quality.visMean) +
+        (d.quality.breaks ? ' · ' + d.quality.breaks + ' breaks' : '');
+    }
     const adjOut = q('#adjOut');
+    const dayOut = q('#dayOut');
     const sync = () => {
       const v = clamp(parseInt(inp.value, 10) || 0, 0, 999);
       d.final = v;
       const adj = v - d.detected;
       adjOut.textContent = (adj > 0 ? '+' : '') + adj;
+      dayOut.textContent = fmtInt(dayBase + v);
     };
     inp.addEventListener('input', sync);
     q('#sminus').addEventListener('click', () => { inp.value = String(Math.max(0, (parseInt(inp.value, 10) || 0) - 1)); sync(); });
@@ -557,7 +617,9 @@ export default function train(host) {
         if (!plankSince) plankSince = now;
         else if (now - plankSince > load().armHoldMs + 400 && !cdTimer) startCountdown(5);
       } else plankSince = 0;
-      paintPill(f);
+      /* The statusbar under the preview already carries fps and tracking, so the overlay on the
+         video says what the numbers mean instead of repeating them. */
+      paintPill(f, f.quality < 0.35 ? 'not seeing you yet' : f.quality < 0.6 ? 'partly in frame' : 'in frame');
       return;
     }
 
@@ -610,9 +672,10 @@ export default function train(host) {
     lostShown = false;
   }
 
-  function paintPill(f) {
+  function paintPill(f, text) {
     els.pill.className = 'pill' + (f.quality < 0.35 ? ' bad' : f.quality < 0.6 ? ' warn' : '');
-    els.pillText.textContent = Math.round(f.fps) + ' fps · ' + pct(f.quality) + ' tracked';
+    els.pillText.textContent = text
+      || (Math.round(f.fps) + ' fps · ' + pct(f.quality) + ' tracked');
   }
 
   function tick() {
@@ -696,6 +759,7 @@ export default function train(host) {
 
   return {
     unmount() {
+      document.body.classList.remove('in-set');
       if (cdTimer) clearInterval(cdTimer);
       if (tickTimer) clearInterval(tickTimer);
       if (tracker) { if (tracker.stop) tracker.stop(); if (tracker.dispose) tracker.dispose(); }

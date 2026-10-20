@@ -41,6 +41,9 @@
 
 /* ── set rows ──────────────────────────────────────────────────── */
 .tg-head{padding:16px 16px 2px;font-size:13px;color:var(--muted)}
+/* the count belongs on the right, in the same tabular column as the values above it */
+.tg-sethead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.tg-headnum{font-variant-numeric:tabular-nums;white-space:nowrap}
 .tg-empty{padding-top:8px;margin-top:0;margin-bottom:0}
 .tg-set{padding:0 16px;border-bottom:1px solid var(--hair)}
 .tg-setmain{display:flex;align-items:center;gap:8px;min-height:52px}
@@ -68,6 +71,9 @@ input.tg-in{width:88px;flex:none;font-family:var(--display);font-weight:700;font
   background:none;border:0;color:var(--muted);font:inherit;font-size:14px;
   border-top:1px solid var(--hair);border-radius:0;cursor:pointer;transition:opacity .12s linear}
 .tg-quietrow:active{opacity:.6}
+/* the collapsed-list toggle: the row above already carries a hairline, so this one must not add a second */
+.tg-showall{border-top:0}
+.tg-del{color:var(--rose)}
 
 /* ── missed-day sheet ──────────────────────────────────────────── */
 .tg-scrim{position:fixed;left:0;right:0;top:0;bottom:0;z-index:80;display:flex;align-items:flex-end;

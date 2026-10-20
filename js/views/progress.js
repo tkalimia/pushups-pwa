@@ -9,7 +9,7 @@ import {
   addDays, bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayFromKey, estimatedMax,
   flagMix, heatmap, monthBuckets, projectTarget, records, timeOfDay, weekBuckets, yearBuckets,
 } from '../stats.js';
-import { clamp, clear, fmtClock, fmtDay, h, mean, pct, sum, today } from '../util.js';
+import { clamp, clear, fmtClock, fmtDay, fmtInt, h, mean, pct, sum, today } from '../util.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 // The heatmap used to squeeze 26 weeks into 370pt, which made every day cell 18×24 — below the
@@ -160,7 +160,7 @@ function fmtDayYear(dayKeyStr, nowKey) {
 }
 
 function peakCaption(bucket, grain) {
-  const reps = bucket.reps;
+  const reps = fmtInt(bucket.reps);
   if (grain === 'day') return 'peak ' + reps + ' on ' + fmtDay(bucket.key);
   if (grain === 'week') return 'peak ' + reps + ' in the week of ' + fmtDay(bucket.key);
   if (grain === 'month') return 'peak ' + reps + ' in ' + monthText(bucket.key);
@@ -248,7 +248,7 @@ function barChart(buckets, opts) {
   if (opts.goal > 0 && maxReps > 0 && opts.goal <= maxReps) {
     // 5px of the slot is the tick and its gap, so the goal line is measured against the bar area only
     const frac = clamp(opts.goal / maxReps, 0, 1).toFixed(4);
-    const line = h('div', { class: 'pg-goalline' }, h('span', { class: 'pg-goaltag' }, 'goal ' + opts.goal));
+    const line = h('div', { class: 'pg-goalline' }, h('span', { class: 'pg-goaltag' }, 'goal ' + fmtInt(opts.goal)));
     line.style.setProperty('bottom', 'calc((100% - 5px) * ' + frac + ' + 5px)');
     plot.append(line);
   }
@@ -335,7 +335,7 @@ export default async function progressView(host, ctx) {
   }
 
   els.sum.textContent = sets.length
-    ? sets.length + ' sets · ' + rec.lifetimeReps + ' reps · ' + days.size + ' days logged'
+    ? fmtInt(sets.length) + ' sets · ' + fmtInt(rec.lifetimeReps) + ' reps · ' + days.size + ' days logged'
     : 'nothing logged yet';
 
   let range = 'week';
@@ -426,7 +426,7 @@ export default async function progressView(host, ctx) {
     const legend = h('div', { class: 'pg-legend' }, h('span', { class: 'pg-capdim' }, 'less'));
     for (let lv = 0; lv <= 4; lv++) legend.append(h('span', { class: 'pg-hsq lv' + lv }));
     legend.append(h('span', { class: 'pg-capdim' }, 'more'),
-      h('span', { class: 'pg-capdim' }, dailyGoal ? ' · full at ' + dailyGoal : ' · no goal set'));
+      h('span', { class: 'pg-capdim' }, dailyGoal ? ' · full at ' + fmtInt(dailyGoal) : ' · no goal set'));
     els.heatLegend.append(legend);
   }
 
@@ -463,8 +463,10 @@ export default async function progressView(host, ctx) {
     let peak = null;
     for (const b of buckets) if (!peak || b.reps > peak.reps) peak = b;
     els.chartCap.append(h('span', { class: 'pg-captxt' }, spec.window));
+    // no leading separator: this line is long enough to wrap, and a dot at the start of the second
+    // line reads as a formatting slip rather than a connector
     els.chartCap.append(h('span', { class: 'pg-capdim' },
-      peak && peak.reps > 0 ? ' · ' + peakCaption(peak, range) + ' · ' + total + ' logged' : ' · nothing logged'));
+      peak && peak.reps > 0 ? peakCaption(peak, range) + ' · ' + fmtInt(total) + ' logged' : 'nothing logged'));
     els.chart.append(barChart(buckets, { grain: range, goal: range === 'day' ? dailyGoal : 0 }));
   }
 
@@ -701,14 +703,15 @@ export default async function progressView(host, ctx) {
     function rows() {
       const r = rec;
       return [
-        ['best set', r.bestSet ? r.bestSet.reps + ' reps' : '–', dayOfEntry(r.bestSet)],
+        ['best set', r.bestSet ? fmtInt(r.bestSet.reps) + ' reps' : '–', dayOfEntry(r.bestSet)],
         ['longest set', r.longestSet ? fmtDur(r.longestSet.durationMs) : '–',
-          r.longestSet ? r.longestSet.reps + ' reps · ' + dayOfEntry(r.longestSet) : ''],
-        ['best day', r.bestDay ? r.bestDay.reps + ' reps' : '–', r.bestDay ? fmtDay(r.bestDay.day) : ''],
-        ['best week', r.bestWeek ? r.bestWeek.reps + ' reps' : '–', r.bestWeek ? 'from ' + fmtDay(r.bestWeek.key) : ''],
-        ['best month', r.bestMonth ? r.bestMonth.reps + ' reps' : '–', r.bestMonth ? monthText(r.bestMonth.key) : ''],
-        ['best year', r.bestYear ? r.bestYear.reps + ' reps' : '–', r.bestYear ? String(r.bestYear.key) : ''],
-        ['lifetime', r.lifetimeReps + ' reps', r.lifetimeSets + ' sets · ' + r.lifetimeMinutes + ' min'],
+          r.longestSet ? fmtInt(r.longestSet.reps) + ' reps · ' + dayOfEntry(r.longestSet) : ''],
+        ['best day', r.bestDay ? fmtInt(r.bestDay.reps) + ' reps' : '–', r.bestDay ? fmtDay(r.bestDay.day) : ''],
+        ['best week', r.bestWeek ? fmtInt(r.bestWeek.reps) + ' reps' : '–', r.bestWeek ? 'from ' + fmtDay(r.bestWeek.key) : ''],
+        ['best month', r.bestMonth ? fmtInt(r.bestMonth.reps) + ' reps' : '–', r.bestMonth ? monthText(r.bestMonth.key) : ''],
+        ['best year', r.bestYear ? fmtInt(r.bestYear.reps) + ' reps' : '–', r.bestYear ? String(r.bestYear.key) : ''],
+        ['lifetime', fmtInt(r.lifetimeReps) + ' reps',
+          fmtInt(r.lifetimeSets) + ' sets · ' + fmtInt(r.lifetimeMinutes) + ' min'],
       ];
     }
 
@@ -728,13 +731,13 @@ export default async function progressView(host, ctx) {
     const keys = Object.keys(FLAG_LABEL).filter((k) => (Number(mix[k]) || 0) > 0);
     const row = h('div', { class: 'flags' });
     if (!keys.length) {
-      row.append(h('span', null, 'nothing flagged in ' + mix.reps + ' reps'));
+      row.append(h('span', null, 'nothing flagged in ' + fmtInt(mix.reps) + ' reps'));
     } else {
       keys.forEach((k) => row.append(h('span', {
         class: FLAG_HARD.indexOf(k) >= 0 ? 'hard' : 'soft',
       }, mix[k] + ' ' + FLAG_LABEL[k])));
       const flagged = sum(keys.map((k) => mix[k]));
-      row.append(h('span', null, flagged + ' of ' + mix.reps + ' reps'));
+      row.append(h('span', null, fmtInt(flagged) + ' of ' + fmtInt(mix.reps) + ' reps'));
     }
     els.flags.append(row);
     if (keys.length) {
@@ -771,7 +774,7 @@ export default async function progressView(host, ctx) {
       els.tod.append(h('div', { class: 'pg-todrow' },
         h('span', { class: 'pg-hsq ' + TOD_TONE[i] }),
         h('span', { class: 'pg-todlbl' }, b.label),
-        h('span', { class: 'pg-todsub' }, b.sets ? b.sets + ' sets · ' + b.reps + ' reps' : 'nothing'),
+        h('span', { class: 'pg-todsub' }, b.sets ? b.sets + ' sets · ' + fmtInt(b.reps) + ' reps' : 'nothing'),
         h('b', { class: 'num pg-todpct' }, total ? pct(b.pct) : '0%')));
     });
   }
@@ -819,8 +822,8 @@ export default async function progressView(host, ctx) {
       local.forEach((s) => body.append(sheetRow(s)));
       body.append(addRow(day));
       totalLine.textContent = local.length
-        ? local.length + ' set' + (local.length === 1 ? '' : 's') + ' · ' + sum(local.map(repsOf))
-          + ' reps kept · camera saw ' + sum(local.map(detectedOf))
+        ? local.length + ' set' + (local.length === 1 ? '' : 's') + ' · ' + fmtInt(sum(local.map(repsOf)))
+          + ' reps kept · camera saw ' + fmtInt(sum(local.map(detectedOf)))
         : 'no sets on this day';
     };
     const reload = async () => {

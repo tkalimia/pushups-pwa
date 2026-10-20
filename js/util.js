@@ -84,6 +84,26 @@ export function pct(v) {
   return `${Math.round(clamp(Number(v) || 0, 0, 1) * 100)}%`;
 }
 
+const NUMFMT = new Intl.NumberFormat();
+
+/** Every count above 999 is unreadable as raw digits — 200022 vs 200,022. */
+export function fmtInt(v) {
+  return NUMFMT.format(Math.round(Number(v) || 0));
+}
+
+/** '7,140 of 350 · 20× goal'. pct() clamps at 100, which is a lie once you have passed the goal
+ *  twice over — the overshoot is the interesting number, so say what multiple it is. */
+export function goalText(reps, goal) {
+  const r = Math.round(Number(reps) || 0);
+  const g = Math.round(Number(goal) || 0);
+  if (g <= 0) return fmtInt(r) + ' reps';
+  const times = r / g;
+  const of = fmtInt(r) + ' of ' + fmtInt(g);
+  if (times < 1) return of + ' · ' + Math.round(times * 100) + '%';
+  if (times < 2) return of + ' · met';
+  return of + ' · ' + (times >= 10 ? fmtInt(Math.round(times)) : times.toFixed(1)) + '× goal';
+}
+
 export function download(filename, text, mime = 'application/json') {
   const blob = new Blob([String(text ?? '')], { type: mime });
   const url = URL.createObjectURL(blob);
