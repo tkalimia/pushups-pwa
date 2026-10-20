@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pushups PWA — phase 2 installer (design pass: WCAG-accurate accents, calendar heatmap, honest gate states, manual-set fix). Self-contained: writes every source file, then downloads
+# Pushups PWA — phase 2 installer (progress tracking + the UI pass). Self-contained: writes every source file, then downloads
 # the MediaPipe wasm + pose models + fonts and generates the icons. Re-runnable; overwrites
 # only files inside the app folder. Nothing here touches your saved sets (they live on the phone).
 set -euo pipefail
@@ -47,6 +47,7 @@ cat > 'css/app.css' <<'__EOF_css_app_css__'
   --muted:#7F918C;
   --hair:rgba(220,230,226,.12);
   --tint:rgba(220,230,226,.05);
+  --sw-off:rgba(220,230,226,.18);
   --num:#DCE6E2;
 
   /* Heatmap ladder: five discrete steps, no opacity tricks (an opacity wash out is invisible
@@ -81,6 +82,7 @@ cat > 'css/app.css' <<'__EOF_css_app_css__'
     --muted:#4E5B57;
     --hair:rgba(14,26,24,.11);
     --tint:rgba(14,26,24,.045);
+    --sw-off:rgba(14,26,24,.16);
     --num:#0E1A18;
 
     --heat-1:#C3D6D4;
@@ -115,14 +117,20 @@ a{color:inherit;text-decoration:none}
 .spacer{height:14px}
 
 /* ── tab bar ── */
-#tabs{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:flex-end;
-  padding:7px 2px calc(7px + var(--sab));background:var(--sheet);border-top:1px solid var(--hair);
+#tabs{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:stretch;
+  padding:0 2px var(--sab);background:var(--sheet);border-top:1px solid var(--hair);
   font-size:11px;line-height:1.05;text-align:center;z-index:60}
-#tabs a{flex:1;color:var(--muted);transition:color .15s linear}
-#tabs a .ic{display:block;height:20px;margin-bottom:4px}
-#tabs a .ic svg{width:19px;height:19px;display:block;margin:0 auto}
+/* The anchor carries its own padding: with it on the bar instead, the tap target was 36pt tall
+   and the 8pt of dead strip under each label still belonged to the nav, not to the tab. */
+#tabs a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:52px;padding:6px 0 5px;color:var(--muted);transition:color .15s linear}
+/* The markup puts a bare <svg> in the anchor. Without an explicit box an SVG with only a viewBox
+   is 150px tall, which turned the nav into a 109px slab and swallowed the bottom of every screen. */
+#tabs a svg{width:20px;height:20px;display:block;margin-bottom:4px}
 #tabs a[aria-current="true"]{color:var(--text)}
-#tabs a.todo{opacity:.45}
+/* Badges is the only tab with no screen behind it yet. .45 read as disabled on a control that
+   does work, so it sits just above that. */
+#tabs a.todo{opacity:.62}
 
 /* ── update banner ── */
 #banner:empty{display:none}
@@ -153,7 +161,18 @@ select{padding-right:30px;background-image:url("data:image/svg+xml;utf8,<svg xml
 /* 44pt is the iPhone HIG minimum for anything you drag or tap with a thumb. The drawn control
    stays slim; the element box is what your finger hits. */
 input[type=range]{width:100%;accent-color:var(--track);height:44px}
-input[type=checkbox]{width:26px;height:26px;accent-color:var(--track)}
+/* Every checkbox in the app is a setting, and a square reads as a to-do rather than a toggle.
+   This is the system switch silhouette — 46×28, knob 22 — in palette colours. The row stays the
+   tap target, so the switch itself never has to be 44pt. */
+.tog input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:none;width:46px;height:28px;
+  border:0;border-radius:999px;background:var(--sw-off);position:relative;cursor:pointer;
+  transition:background .15s linear}
+.tog input[type=checkbox]::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;
+  border-radius:50%;background:var(--porcelain);box-shadow:0 1px 2px rgba(0,0,0,.3);
+  transition:transform .15s linear}
+.tog input[type=checkbox]:checked{background:var(--track)}
+.tog input[type=checkbox]:checked::after{transform:translateX(18px)}
+.tog input[type=checkbox]:disabled{opacity:.42;cursor:default}
 label.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;
   padding:11px 0;border-bottom:1px solid var(--hair);font-size:15px}
 label.tog .sub{display:block;font-size:12px}
@@ -177,6 +196,18 @@ label.tog .sub{display:block;font-size:12px}
 
 /* ── setup ── */
 .statusbar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--hair);font-size:13px}
+/* manual mode has no sensor to instrument: one honest sentence replaces the readiness bar and the
+   four framing checks */
+.setupnote{padding:14px 0 4px;font-size:14px;line-height:1.5;color:var(--muted)}
+.setupnote b{color:var(--text);font-weight:600}
+/* A short manual setup block would otherwise strand itself at the top of a tall screen. Auto
+   margins centre it without the clipped-overflow that justify-content:center causes in a scroller. */
+.setuplist{display:flex;flex-direction:column}
+.setupbody{margin:auto 0}
+.ctxhead{padding:16px 16px 4px;font-size:13px;color:var(--muted)}
+.ctxrow{display:flex;align-items:baseline;gap:12px;padding:10px 16px;border-bottom:1px solid var(--hair)}
+.ctxnum{font-size:22px;min-width:46px}
+.ctxmeta{flex:1;min-width:0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .statusbar .bar{flex:1}
 .bar{height:5px;background:var(--tint);border-radius:3px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--track);transition:width .3s linear}
@@ -188,6 +219,9 @@ label.tog .sub{display:block;font-size:12px}
 .chk.bad .mk{color:var(--rose)}
 .chk.bad>.t{color:var(--text)}
 .chk.wait{opacity:.72}
+/* The section rule under the checks would otherwise sit on top of this border and read as a
+   formatting slip rather than a divider. */
+#checks .chk:last-child{border-bottom:0}
 .chk .t{flex:0 1 auto}
 .chk .why{color:var(--muted);font-size:12px;margin-left:auto;text-align:right;min-width:0;overflow-wrap:anywhere}
 .chk.bad .why{color:var(--rose)}
@@ -198,7 +232,18 @@ label.tog .sub{display:block;font-size:12px}
 
 /* ── counter ── */
 .counter{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
-.counter[data-phase="setup"] .camwrap{flex:1 1 42%;min-height:168px}
+/* Mid-set the tab bar is one mis-tap from leaving the screen, and every pixel of it belongs to the
+   number you are trying to read from the floor. It goes; the view takes the full height. */
+body.in-set #tabs{display:none}
+body.in-set #view{bottom:0}
+body.in-set .counter{padding-bottom:var(--sab)}
+body.in-set .corr .step{width:88px;height:68px;font-size:32px}
+/* The preview is a reference, not the content of this screen: the four checks, the preset and the
+   flip button are what you came here to reach. At flex:1 they fought the video for space and lost —
+   the video took 64% and clipped two thirds of the checks below the fold. */
+.counter[data-phase="setup"] .camwrap{flex:0 1 38%;min-height:168px}
+/* the clock only has something to say once a set is running — "--:--" is a placeholder, not a state */
+.counter[data-phase="setup"] .topline .clock{visibility:hidden}
 .counter[data-phase="set"] .camwrap,.counter[data-phase="countdown"] .camwrap{flex:none;height:26%}
 .counter[data-phase="summary"] .camwrap{display:none}
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -208,10 +253,13 @@ label.tog .sub{display:block;font-size:12px}
 .cta{padding:10px 16px 12px;background:var(--bg);border-top:1px solid var(--hair)}
 .cta .sub{margin-top:7px;font-size:12px;line-height:1.35}
 #repnum{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
-  font-size:min(46vh,400px,calc(176vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
+  font-size:min(50vh,410px,calc(182vw / var(--nd,1)));line-height:.88;color:var(--num);transition:color .16s linear}
 #repnum.tick{color:var(--brass)}
 #cdnum{font-family:var(--display);font-weight:700;font-size:min(70vw,38vh,320px);line-height:.9;color:var(--brass)}
 #chip{font-size:14px;color:var(--muted);text-align:center;min-height:20px;margin-top:6px}
+/* the one piece of context worth having mid-set: what this set is adding to the day */
+.dayline{margin-top:4px;text-align:center;color:var(--muted);font:600 13px/1.3 var(--ui);
+  letter-spacing:.02em;font-variant-numeric:tabular-nums;min-height:18px}
 .hairline{height:3px;background:transparent;transition:background .2s linear}
 .hairline.on{background:var(--rose)}
 .corr{display:flex;align-items:center;justify-content:center;gap:16px;padding:8px 0 4px}
@@ -226,7 +274,12 @@ label.tog .sub{display:block;font-size:12px}
 .warnbox[hidden]{display:none}
 
 /* ── summary ── */
-.sheet{flex:1;min-height:0;align-self:stretch;overflow:auto;background:var(--sheet);padding:14px 16px calc(16px + var(--sab))}
+.sheet{flex:1;min-height:0;align-self:stretch;overflow:auto;background:var(--sheet);
+  display:flex;flex-direction:column;padding:14px 16px 0}
+/* Saving is the whole point of this screen, so the buttons sit at the bottom of the sheet within
+   thumb reach — pinned there when the recap is short, stuck there when it scrolls. */
+.sumcta{position:sticky;bottom:0;margin-top:auto;background:var(--sheet);
+  border-top:1px solid var(--hair);padding:12px 0 10px}
 .finum{font:700 92px/1 var(--display);text-align:center;font-variant-numeric:tabular-nums;color:var(--num)}
 .finum input{all:unset;display:block;width:100%;text-align:center;font:inherit;color:inherit}
 .kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:14px}
@@ -239,7 +292,9 @@ label.tog .sub{display:block;font-size:12px}
 .flags .info{border-color:var(--plum);color:var(--plum)}
 
 /* ── lists ── */
-.list{flex:1;min-height:0;overflow:auto;padding-bottom:calc(14px + var(--sab))}
+/* #view already stops above the tab bar, and the bar absorbs the home-indicator inset — adding
+   --sab in here too just stranded 34px of dead space at the foot of every scrolling screen. */
+.list{flex:1;min-height:0;overflow:auto;padding-bottom:14px}
 .item{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:12px 16px;
   border-bottom:1px solid var(--hair)}
 .item .num{font-size:21px}
@@ -528,6 +583,9 @@ cat > 'css/today.css' <<'__EOF_css_today_css__'
 
 /* ── set rows ──────────────────────────────────────────────────── */
 .tg-head{padding:16px 16px 2px;font-size:13px;color:var(--muted)}
+/* the count belongs on the right, in the same tabular column as the values above it */
+.tg-sethead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.tg-headnum{font-variant-numeric:tabular-nums;white-space:nowrap}
 .tg-empty{padding-top:8px;margin-top:0;margin-bottom:0}
 .tg-set{padding:0 16px;border-bottom:1px solid var(--hair)}
 .tg-setmain{display:flex;align-items:center;gap:8px;min-height:52px}
@@ -555,6 +613,9 @@ input.tg-in{width:88px;flex:none;font-family:var(--display);font-weight:700;font
   background:none;border:0;color:var(--muted);font:inherit;font-size:14px;
   border-top:1px solid var(--hair);border-radius:0;cursor:pointer;transition:opacity .12s linear}
 .tg-quietrow:active{opacity:.6}
+/* the collapsed-list toggle: the row above already carries a hairline, so this one must not add a second */
+.tg-showall{border-top:0}
+.tg-del{color:var(--rose)}
 
 /* ── missed-day sheet ──────────────────────────────────────────── */
 .tg-scrim{position:fixed;left:0;right:0;top:0;bottom:0;z-index:80;display:flex;align-items:flex-end;
@@ -610,7 +671,7 @@ cat > 'index.html' <<'__EOF_index_html__'
 <nav id="tabs" aria-label="Sections">
   <a href="#/today" data-tab="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>Today</a>
   <a href="#/train" data-tab="train"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5"/><path d="M6 11l6-6 6 6"/></svg>Train</a>
-  <a class="todo" href="#/progress" data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19v-4"/><path d="M12 19V8"/><path d="M19 19v-8"/></svg>Progress</a>
+  <a href="#/progress" data-tab="progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19v-4"/><path d="M12 19V8"/><path d="M19 19v-8"/></svg>Progress</a>
   <a class="todo" href="#/badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5.4"/><path d="M9.2 13.6L7.5 20l4.5-2.6L16.5 20l-1.7-6.4"/></svg>Badges</a>
   <a href="#/settings" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h9"/><path d="M19.2 8H20"/><circle cx="16.6" cy="8" r="2.4"/><path d="M4 16h4"/><path d="M14.2 16H20"/><circle cx="11.4" cy="16" r="2.4"/></svg>Settings</a>
 </nav>
@@ -3620,6 +3681,26 @@ export function pct(v) {
   return `${Math.round(clamp(Number(v) || 0, 0, 1) * 100)}%`;
 }
 
+const NUMFMT = new Intl.NumberFormat();
+
+/** Every count above 999 is unreadable as raw digits — 200022 vs 200,022. */
+export function fmtInt(v) {
+  return NUMFMT.format(Math.round(Number(v) || 0));
+}
+
+/** '7,140 of 350 · 20× goal'. pct() clamps at 100, which is a lie once you have passed the goal
+ *  twice over — the overshoot is the interesting number, so say what multiple it is. */
+export function goalText(reps, goal) {
+  const r = Math.round(Number(reps) || 0);
+  const g = Math.round(Number(goal) || 0);
+  if (g <= 0) return fmtInt(r) + ' reps';
+  const times = r / g;
+  const of = fmtInt(r) + ' of ' + fmtInt(g);
+  if (times < 1) return of + ' · ' + Math.round(times * 100) + '%';
+  if (times < 2) return of + ' · met';
+  return of + ' · ' + (times >= 10 ? fmtInt(Math.round(times)) : times.toFixed(1)) + '× goal';
+}
+
 export function download(filename, text, mime = 'application/json') {
   const blob = new Blob([String(text ?? '')], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -4018,7 +4099,7 @@ import {
   addDays, bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayFromKey, estimatedMax,
   flagMix, heatmap, monthBuckets, projectTarget, records, timeOfDay, weekBuckets, yearBuckets,
 } from '../stats.js';
-import { clamp, clear, fmtClock, fmtDay, h, mean, pct, sum, today } from '../util.js';
+import { clamp, clear, fmtClock, fmtDay, fmtInt, h, mean, pct, sum, today } from '../util.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 // The heatmap used to squeeze 26 weeks into 370pt, which made every day cell 18×24 — below the
@@ -4169,7 +4250,7 @@ function fmtDayYear(dayKeyStr, nowKey) {
 }
 
 function peakCaption(bucket, grain) {
-  const reps = bucket.reps;
+  const reps = fmtInt(bucket.reps);
   if (grain === 'day') return 'peak ' + reps + ' on ' + fmtDay(bucket.key);
   if (grain === 'week') return 'peak ' + reps + ' in the week of ' + fmtDay(bucket.key);
   if (grain === 'month') return 'peak ' + reps + ' in ' + monthText(bucket.key);
@@ -4257,7 +4338,7 @@ function barChart(buckets, opts) {
   if (opts.goal > 0 && maxReps > 0 && opts.goal <= maxReps) {
     // 5px of the slot is the tick and its gap, so the goal line is measured against the bar area only
     const frac = clamp(opts.goal / maxReps, 0, 1).toFixed(4);
-    const line = h('div', { class: 'pg-goalline' }, h('span', { class: 'pg-goaltag' }, 'goal ' + opts.goal));
+    const line = h('div', { class: 'pg-goalline' }, h('span', { class: 'pg-goaltag' }, 'goal ' + fmtInt(opts.goal)));
     line.style.setProperty('bottom', 'calc((100% - 5px) * ' + frac + ' + 5px)');
     plot.append(line);
   }
@@ -4344,7 +4425,7 @@ export default async function progressView(host, ctx) {
   }
 
   els.sum.textContent = sets.length
-    ? sets.length + ' sets · ' + rec.lifetimeReps + ' reps · ' + days.size + ' days logged'
+    ? fmtInt(sets.length) + ' sets · ' + fmtInt(rec.lifetimeReps) + ' reps · ' + days.size + ' days logged'
     : 'nothing logged yet';
 
   let range = 'week';
@@ -4435,7 +4516,7 @@ export default async function progressView(host, ctx) {
     const legend = h('div', { class: 'pg-legend' }, h('span', { class: 'pg-capdim' }, 'less'));
     for (let lv = 0; lv <= 4; lv++) legend.append(h('span', { class: 'pg-hsq lv' + lv }));
     legend.append(h('span', { class: 'pg-capdim' }, 'more'),
-      h('span', { class: 'pg-capdim' }, dailyGoal ? ' · full at ' + dailyGoal : ' · no goal set'));
+      h('span', { class: 'pg-capdim' }, dailyGoal ? ' · full at ' + fmtInt(dailyGoal) : ' · no goal set'));
     els.heatLegend.append(legend);
   }
 
@@ -4472,8 +4553,10 @@ export default async function progressView(host, ctx) {
     let peak = null;
     for (const b of buckets) if (!peak || b.reps > peak.reps) peak = b;
     els.chartCap.append(h('span', { class: 'pg-captxt' }, spec.window));
+    // no leading separator: this line is long enough to wrap, and a dot at the start of the second
+    // line reads as a formatting slip rather than a connector
     els.chartCap.append(h('span', { class: 'pg-capdim' },
-      peak && peak.reps > 0 ? ' · ' + peakCaption(peak, range) + ' · ' + total + ' logged' : ' · nothing logged'));
+      peak && peak.reps > 0 ? peakCaption(peak, range) + ' · ' + fmtInt(total) + ' logged' : 'nothing logged'));
     els.chart.append(barChart(buckets, { grain: range, goal: range === 'day' ? dailyGoal : 0 }));
   }
 
@@ -4710,14 +4793,15 @@ export default async function progressView(host, ctx) {
     function rows() {
       const r = rec;
       return [
-        ['best set', r.bestSet ? r.bestSet.reps + ' reps' : '–', dayOfEntry(r.bestSet)],
+        ['best set', r.bestSet ? fmtInt(r.bestSet.reps) + ' reps' : '–', dayOfEntry(r.bestSet)],
         ['longest set', r.longestSet ? fmtDur(r.longestSet.durationMs) : '–',
-          r.longestSet ? r.longestSet.reps + ' reps · ' + dayOfEntry(r.longestSet) : ''],
-        ['best day', r.bestDay ? r.bestDay.reps + ' reps' : '–', r.bestDay ? fmtDay(r.bestDay.day) : ''],
-        ['best week', r.bestWeek ? r.bestWeek.reps + ' reps' : '–', r.bestWeek ? 'from ' + fmtDay(r.bestWeek.key) : ''],
-        ['best month', r.bestMonth ? r.bestMonth.reps + ' reps' : '–', r.bestMonth ? monthText(r.bestMonth.key) : ''],
-        ['best year', r.bestYear ? r.bestYear.reps + ' reps' : '–', r.bestYear ? String(r.bestYear.key) : ''],
-        ['lifetime', r.lifetimeReps + ' reps', r.lifetimeSets + ' sets · ' + r.lifetimeMinutes + ' min'],
+          r.longestSet ? fmtInt(r.longestSet.reps) + ' reps · ' + dayOfEntry(r.longestSet) : ''],
+        ['best day', r.bestDay ? fmtInt(r.bestDay.reps) + ' reps' : '–', r.bestDay ? fmtDay(r.bestDay.day) : ''],
+        ['best week', r.bestWeek ? fmtInt(r.bestWeek.reps) + ' reps' : '–', r.bestWeek ? 'from ' + fmtDay(r.bestWeek.key) : ''],
+        ['best month', r.bestMonth ? fmtInt(r.bestMonth.reps) + ' reps' : '–', r.bestMonth ? monthText(r.bestMonth.key) : ''],
+        ['best year', r.bestYear ? fmtInt(r.bestYear.reps) + ' reps' : '–', r.bestYear ? String(r.bestYear.key) : ''],
+        ['lifetime', fmtInt(r.lifetimeReps) + ' reps',
+          fmtInt(r.lifetimeSets) + ' sets · ' + fmtInt(r.lifetimeMinutes) + ' min'],
       ];
     }
 
@@ -4737,13 +4821,13 @@ export default async function progressView(host, ctx) {
     const keys = Object.keys(FLAG_LABEL).filter((k) => (Number(mix[k]) || 0) > 0);
     const row = h('div', { class: 'flags' });
     if (!keys.length) {
-      row.append(h('span', null, 'nothing flagged in ' + mix.reps + ' reps'));
+      row.append(h('span', null, 'nothing flagged in ' + fmtInt(mix.reps) + ' reps'));
     } else {
       keys.forEach((k) => row.append(h('span', {
         class: FLAG_HARD.indexOf(k) >= 0 ? 'hard' : 'soft',
       }, mix[k] + ' ' + FLAG_LABEL[k])));
       const flagged = sum(keys.map((k) => mix[k]));
-      row.append(h('span', null, flagged + ' of ' + mix.reps + ' reps'));
+      row.append(h('span', null, fmtInt(flagged) + ' of ' + fmtInt(mix.reps) + ' reps'));
     }
     els.flags.append(row);
     if (keys.length) {
@@ -4780,7 +4864,7 @@ export default async function progressView(host, ctx) {
       els.tod.append(h('div', { class: 'pg-todrow' },
         h('span', { class: 'pg-hsq ' + TOD_TONE[i] }),
         h('span', { class: 'pg-todlbl' }, b.label),
-        h('span', { class: 'pg-todsub' }, b.sets ? b.sets + ' sets · ' + b.reps + ' reps' : 'nothing'),
+        h('span', { class: 'pg-todsub' }, b.sets ? b.sets + ' sets · ' + fmtInt(b.reps) + ' reps' : 'nothing'),
         h('b', { class: 'num pg-todpct' }, total ? pct(b.pct) : '0%')));
     });
   }
@@ -4828,8 +4912,8 @@ export default async function progressView(host, ctx) {
       local.forEach((s) => body.append(sheetRow(s)));
       body.append(addRow(day));
       totalLine.textContent = local.length
-        ? local.length + ' set' + (local.length === 1 ? '' : 's') + ' · ' + sum(local.map(repsOf))
-          + ' reps kept · camera saw ' + sum(local.map(detectedOf))
+        ? local.length + ' set' + (local.length === 1 ? '' : 's') + ' · ' + fmtInt(sum(local.map(repsOf)))
+          + ' reps kept · camera saw ' + fmtInt(sum(local.map(detectedOf)))
         : 'no sets on this day';
     };
     const reload = async () => {
@@ -4990,7 +5074,7 @@ import { load, save, params, setParam, resetParams, PRESETS } from '../settings.
 import { exportJSON, importJSON, countSets } from '../db.js';
 import { forgetCache, loadGoals, loadPasses, loadStreak, passesThisWeek, saveGoals, saveStreak } from '../goals.js';
 import { dayKey } from '../stats.js';
-import { download } from '../util.js';
+import { download, fmtInt } from '../util.js';
 import { platformInfo, persistentStatus, requestPersistent, tryBadging } from '../upgrade.js';
 
 const SEL = (id, opts, val) => `<select id="${id}">` +
@@ -5163,6 +5247,8 @@ export default function settingsView(host) {
   });
 
   q('#vibHint').textContent = navigator.vibrate ? 'supported here' : 'not exposed by iOS Safari';
+  // a switch that cannot do anything on the only device this runs on should not look live
+  q('#haptics').disabled = !navigator.vibrate;
 
   function syncAll() {
     const cur = load();
@@ -5218,7 +5304,7 @@ export default function settingsView(host) {
     saveStreak({ passesPerWeek: Number(e.target.value) }).then(paintPasses);
   });
 
-  countSets().then((n) => { q('#setCount').textContent = String(n); }).catch(() => { q('#setCount').textContent = '?'; });
+  countSets().then((n) => { q('#setCount').textContent = fmtInt(n); }).catch(() => { q('#setCount').textContent = '?'; });
   persistentStatus().then(async (ok) => {
     q('#persist').textContent = ok ? 'granted' : 'not granted';
     if (!ok) {
@@ -5249,7 +5335,7 @@ export default function settingsView(host) {
       ? 'Imported ' + res.added + ' sets' + (res.metaWritten ? ' and ' + res.metaWritten + ' settings records' : '') + '.'
       : 'Import failed: ' + res.error;
     if (res.ok) {
-      countSets().then((n) => { q('#setCount').textContent = String(n); });
+      countSets().then((n) => { q('#setCount').textContent = fmtInt(n); });
       forgetCache();
     }
   });
@@ -5271,13 +5357,16 @@ cat > 'js/views/today.js' <<'__EOF_js_views_today_js__'
 import { deleteSet, listSets, saveSet, updateSet } from '../db.js';
 import { goalStatus, usePass } from '../goals.js';
 import { byDay, dayFromKey, gaps, records } from '../stats.js';
-import { clamp, dayOf, fmtClock, fmtDay, h, pct, sum, today } from '../util.js';
+import { clamp, dayOf, fmtClock, fmtDay, fmtInt, goalText, h, pct, sum, today } from '../util.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const SIZE = 88;
 const STROKE = 7;
 const R = (SIZE - STROKE) / 2 - 2;
 const C = 2 * Math.PI * R;
+/* A day of pushups can run to 150 near-identical rows. Showing them all buries the four numbers
+   that matter and puts a delete button on every one of them. */
+const PREVIEW_SETS = 6;
 
 const SKELETON = `
   <div class="list">
@@ -5429,7 +5518,7 @@ export default async function todayView(host, ctx) {
     .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
   const dayReps = sum(mine.map(repsOf));
 
-  els.total.textContent = String(dayReps);
+  els.total.textContent = fmtInt(dayReps);
 
   const daily = status ? status.daily : null;
   const goal = daily ? daily.goal : 0;
@@ -5461,7 +5550,7 @@ export default async function todayView(host, ctx) {
     els.goalNote.className = 'tg-goalnote' + (wasMet ? ' met' : '');
     els.goalNote.textContent = wasMet
       ? 'goal met'
-      : left + ' to go · goal ' + d.goal;
+      : fmtInt(left) + ' to go · goal ' + fmtInt(d.goal);
   }
 
   function paintStreak(st, wasMet, dayKeyStr) {
@@ -5513,14 +5602,14 @@ export default async function todayView(host, ctx) {
   function paintMinis(st, dayMap, hist, dayKeyStr) {
     const rows = [];
     if (st) {
-      rows.push(['this week', st.weekly.reps + ' of ' + st.weekly.goal + ' · ' + pct(st.weekly.pct)]);
+      rows.push(['this week', goalText(st.weekly.reps, st.weekly.goal)]);
       let month = 0;
       for (const [k, d] of dayMap) if (k.slice(0, 7) === dayKeyStr.slice(0, 7)) month += d.reps;
-      rows.push(['this month', String(month) + ' reps']);
-      rows.push(['this year', st.yearly.reps + ' of ' + st.yearly.goal + ' · ' + pct(st.yearly.pct)]);
+      rows.push(['this month', fmtInt(month) + ' reps']);
+      rows.push(['this year', goalText(st.yearly.reps, st.yearly.goal)]);
     }
     if (hist) {
-      rows.push(['lifetime', hist.lifetimeReps + ' reps · ' + hist.lifetimeSets + ' sets']);
+      rows.push(['lifetime', fmtInt(hist.lifetimeReps) + ' reps · ' + fmtInt(hist.lifetimeSets) + ' sets']);
     }
     els.minis.replaceChildren();
     if (!rows.length) return;   // the note under the date already says what failed
@@ -5542,18 +5631,32 @@ export default async function todayView(host, ctx) {
       els.sets.append(h('p', { class: 'soon tg-empty' }, 'nothing to list — the saved sets could not be read.'));
       return;
     }
-    els.setsHead.append(h('div', { class: 'tg-head' },
-      'today’s sets' + (list.length ? ' · ' + list.length : '')));
+    const kept = sum(list.map(repsOf));
+    els.setsHead.append(h('div', { class: 'tg-head tg-sethead' },
+      h('span', null, 'today’s sets'),
+      h('span', { class: 'tg-headnum' },
+        list.length ? list.length + ' · ' + fmtInt(kept) + ' reps' : 'none')));
     if (!list.length) {
       els.sets.append(h('p', { class: 'soon tg-empty' },
         'no sets yet today. Train → start set, or add a missed day below.'));
       return;
     }
-    els.sets.replaceChildren(...list.map(setRow));
+    let all = false;
+    const draw = () => {
+      els.sets.replaceChildren();
+      const shown = all ? list : list.slice(0, PREVIEW_SETS);
+      for (const s of shown) els.sets.append(setRow(s));
+      if (list.length > PREVIEW_SETS) {
+        const btn = h('button', { class: 'tg-quietrow tg-showall', type: 'button' },
+          all ? 'show fewer' : 'show all ' + fmtInt(list.length) + ' sets');
+        btn.addEventListener('click', () => { all = !all; draw(); });
+        els.sets.append(btn);
+      }
+    };
+    draw();
     const det = sum(list.map(detectedOf));
-    const kept = sum(list.map(repsOf));
     els.foot.append(h('div', { class: 'tg-foot' },
-      'camera saw ' + det + ', you kept ' + kept + '.'));
+      'camera saw ' + fmtInt(det) + ', you kept ' + fmtInt(kept) + '.'));
   }
 
   function setRow(s) {
@@ -5562,11 +5665,10 @@ export default async function todayView(host, ctx) {
     const flagged = flagCount(s);
     const meta = fmtClock(s.startedAt || 0) + ' · ' + sourceLabel(s)
       + (flagged ? ' · ' + flagged + ' flagged' : '');
-    const num = h('span', { class: 'tg-setnum' }, String(repsOf(s)));
+    const num = h('span', { class: 'tg-setnum' }, fmtInt(repsOf(s)));
     const open = h('button', { class: 'tg-editbtn', type: 'button' },
       num, h('span', { class: 'tg-setmeta' }, meta));
-    const del = h('button', { class: 'btn btn-quiet tg-mini', type: 'button' }, 'delete');
-    line.append(open, del);
+    line.append(open);
 
     const editline = h('div', { class: 'tg-editline', hidden: true });
     const inp = h('input', {
@@ -5575,20 +5677,20 @@ export default async function todayView(host, ctx) {
     });
     const err = h('span', { class: 'tg-err' });
     const saveBtn = h('button', { class: 'btn btn-primary tg-mini', type: 'button' }, 'save');
+    // delete only ever appears next to the set you just opened — never on all 150 of them at once
+    const delBtn = h('button', { class: 'btn btn-quiet tg-mini tg-del', type: 'button' }, 'delete');
     const cancelBtn = h('button', { class: 'btn btn-quiet tg-mini', type: 'button' }, 'cancel');
-    editline.append(inp, saveBtn, cancelBtn, err);
+    editline.append(inp, saveBtn, delBtn, cancelBtn, err);
 
     function openEditor() {
       err.textContent = '';
       inp.value = String(repsOf(s));
       editline.hidden = false;
-      del.hidden = true;
       num.hidden = true;          // the meta line stays, so you can see which set you are fixing
       try { inp.focus({ preventScroll: false }); } catch { inp.focus(); }
     }
     function closeEditor() {
       editline.hidden = true;
-      del.hidden = false;
       num.hidden = false;
     }
 
@@ -5607,14 +5709,14 @@ export default async function todayView(host, ctx) {
         saveBtn.disabled = false;
       }
     });
-    del.addEventListener('click', async () => {
+    delBtn.addEventListener('click', async () => {
       if (!confirm('Delete this set?')) return;
-      del.disabled = true;
+      delBtn.disabled = true;
       try {
         await deleteSet(s.id);
         await rerender();
       } catch (e) {
-        del.disabled = false;
+        delBtn.disabled = false;
         err.textContent = 'could not delete: ' + errText(e);
         openEditor();
       }
@@ -5749,7 +5851,7 @@ import { Counter } from '../counter.js';
 import { saveSet, listSetsForDay } from '../db.js';
 import { unlockAudio, speak, playBeep, playWarning, vibrate, announceRep, countdownVoice } from '../feedback.js';
 import { requestWakeLock, tryBadging } from '../upgrade.js';
-import { today, dayOf, fmtClock, clamp, pct } from '../util.js';
+import { today, dayOf, fmtClock, fmtInt, clamp, pct, h } from '../util.js';
 
 const LM = { HEAD: 0, SHOULDER: 11, ELBOW: 13, WRIST: 15, HIP: 23, ANKLE: 27 };
 const EMPTY_OUT = {
@@ -5782,6 +5884,7 @@ export default function train(host) {
   let plankSince = 0;
   let lastOut = EMPTY_OUT;
   let summary = null;
+  let dayBase = 0;
   let lightLevel = 120;
 
   const els = {};
@@ -5859,25 +5962,42 @@ export default function train(host) {
   function setPhase(p) {
     phase = p;
     els.root.dataset.phase = p;
+    /* Mid-set there is nothing else to navigate to, and the tab bar sits one thumb-slide from the
+       End button. It goes away and the number takes the whole screen. */
+    document.body.classList.toggle('in-set', p === 'set' || p === 'countdown');
   }
 
   function renderSetup() {
     setPhase('setup');
     els.overlay.style.display = '';
     lastOut = EMPTY_OUT;
-    els.phaseLabel.textContent = load().manualMode ? 'manual log' : 'set up';
+    const manual = load().manualMode;
+    els.phaseLabel.textContent = manual ? 'manual log' : 'set up';
     els.endBtn.hidden = true;
     els.camoff.hidden = true;
     clearWarn();
+    /* Manual mode never opens the camera, so the readiness bar, the fps readout, the four framing
+       checks, the depth preset and the flip button all describe a sensor that is switched off.
+       Showing them at zero is a screen of instrumentation about nothing. */
     els.stage.innerHTML = `
-      <div class="list">
+      <div class="list${manual ? ' setuplist' : ''}">
+        ${manual ? `
+        <div class="setupbody">
+          <div class="pad"><div class="setupnote">No camera. Tap <b>Start set</b>, then tap anywhere
+            once per rep — the count is exactly what you tap.</div></div>
+          <div id="manualCtx"></div>
+          <div class="pad">
+            <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">no camera, count with your thumb</span></span>
+              <input type="checkbox" id="manualChk"></label>
+          </div>
+        </div>` : `
         <div class="statusbar">
           <span class="bar grow"><i id="qbar"></i></span>
           <span class="mono" id="qtxt">0%</span>
           <span class="mono" id="fpstxt">0 fps</span>
         </div>
+        <div class="pad"><div id="checks"></div></div>
         <div class="pad">
-          <div id="checks"></div>
           <div class="rule"></div>
           <div class="row">
             <button class="btn btn-quiet" id="flipBtn">Use front camera</button>
@@ -5888,9 +6008,9 @@ export default function train(host) {
               <option value="strict">Strict depth</option>
             </select>
           </div>
-          <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">no camera, count with your thumb</span></span>
+          <label class="tog" style="border-bottom:0"><span>Manual tap-to-log<span class="sub">skip the camera entirely</span></span>
             <input type="checkbox" id="manualChk"></label>
-        </div>
+        </div>`}
       </div>
       <div class="cta">
         <button class="btn btn-primary btn-big" id="startBtn">Start set</button>
@@ -5900,7 +6020,6 @@ export default function train(host) {
     els.qtxt = q('#qtxt');
     els.fpstxt = q('#fpstxt');
     els.checks = q('#checks');
-    const manual = load().manualMode;
     els.camwrap.style.display = manual ? 'none' : '';
     q('#manualChk').checked = manual;
     q('#manualChk').addEventListener('change', (e) => {
@@ -5911,21 +6030,45 @@ export default function train(host) {
       renderSetup();
     });
     els.presetSel = q('#presetSel');
-    els.presetSel.value = load().preset;
-    els.presetSel.addEventListener('change', (e) => {
-      save({ preset: e.target.value, overrides: {} });
-      counter.setParams(params());
-    });
-    q('#flipBtn').addEventListener('click', () => {
-      const next = load().camera === 'environment' ? 'user' : 'environment';
-      save({ camera: next });
-      startCamera(next);
-    });
+    if (els.presetSel) {
+      els.presetSel.value = load().preset;
+      els.presetSel.addEventListener('change', (e) => {
+        save({ preset: e.target.value, overrides: {} });
+        counter.setParams(params());
+      });
+      q('#flipBtn').addEventListener('click', () => {
+        const next = load().camera === 'environment' ? 'user' : 'environment';
+        save({ camera: next });
+        startCamera(next);
+      });
+    }
     q('#startBtn').addEventListener('click', beginSet);
-    q('#hint').textContent = load().autoArm
-      ? 'Auto-start is on: hold a steady plank and the countdown begins.'
-      : 'Set the phone on the floor 1.5–2.5 m away, side-on. Tap Start set, then get into position.';
+    q('#hint').textContent = manual
+      ? 'Every tap on the screen is one rep. − and + fix a mis-tap.'
+      : load().autoArm
+        ? 'Auto-start is on: hold a steady plank and the countdown begins.'
+        : 'Set the phone on the floor 1.5–2.5 m away, side-on. Tap Start set, then get into position.';
     paintChecks();
+    if (manual) paintManualCtx();
+  }
+
+  /** What today already holds — without this the manual setup screen is an empty page with a button. */
+  function paintManualCtx() {
+    const box = q('#manualCtx');
+    if (!box) return;
+    listSetsForDay(today()).then((list) => {
+      const sets = Array.isArray(list) ? list : [];
+      const reps = sets.reduce((a, s) => a + (Number(s.repsFinal) || 0), 0);
+      box.replaceChildren(h('div', { class: 'ctxhead' }, sets.length
+        ? 'today · ' + sets.length + ' sets · ' + fmtInt(reps) + ' reps'
+        : 'nothing logged today yet'));
+      for (const s of sets.slice(-3).reverse()) {
+        box.append(h('div', { class: 'ctxrow' },
+          h('b', { class: 'ctxnum num' }, fmtInt(Number(s.repsFinal) || 0)),
+          h('span', { class: 'ctxmeta' }, fmtClock(s.startedAt || 0)
+            + ' · ' + ((s.source === 'manual' || s.mode === 'manual') ? 'manual' : 'camera'))));
+      }
+    }).catch(() => { box.replaceChildren(); });
   }
 
   const SVGNS = 'http://www.w3.org/2000/svg';
@@ -6057,24 +6200,44 @@ export default function train(host) {
     els.endBtn.textContent = 'End';
     els.phaseLabel.textContent = 'counting';
     renderCountFace();
+    readDayBase();
     tickTimer = setInterval(tick, 250);
   }
 
-  function renderCountFace() {
-    els.overlay.style.display = load().skeletonOnSet ? '' : 'none';
-    els.stage.innerHTML = `
+  /* One face for both counting modes — the camera set and the tap set differ only in the chip. */
+  const COUNT_FACE = `
       <div id="repnum" class="num">0</div>
-      <div id="chip">get into plank</div>
+      <div id="chip"></div>
       <div class="corr">
         <button class="step" id="minus" aria-label="one fewer">−</button>
         <span class="n" id="adj"></span>
         <button class="step" id="plus" aria-label="one more">+</button>
-      </div>`;
+      </div>
+      <div id="dayline" class="dayline"></div>`;
+
+  function bindCountFace(chipText) {
+    els.stage.innerHTML = COUNT_FACE;
     els.repnum = q('#repnum');
     els.chip = q('#chip');
     els.adj = q('#adj');
-    q('#minus').addEventListener('click', () => correct(-1));
-    q('#plus').addEventListener('click', () => correct(1));
+    els.dayline = q('#dayline');
+    els.chip.textContent = chipText;
+    q('#minus').addEventListener('click', (e) => { e.stopPropagation(); correct(-1); });
+    q('#plus').addEventListener('click', (e) => { e.stopPropagation(); correct(1); });
+  }
+
+  /** The day total this set is being added to, so the count screen answers "how many today". */
+  function readDayBase() {
+    dayBase = 0;
+    listSetsForDay(today()).then((list) => {
+      dayBase = (list || []).reduce((a, s) => a + (Number(s.repsFinal) || 0), 0);
+      paintCount();
+    }).catch(() => { if (els.dayline) els.dayline.textContent = ''; });
+  }
+
+  function renderCountFace() {
+    els.overlay.style.display = load().skeletonOnSet ? '' : 'none';
+    bindCountFace('get into plank');
     paintCount();
   }
 
@@ -6096,6 +6259,7 @@ export default function train(host) {
       setTimeout(() => els.repnum && els.repnum.classList.remove('tick'), 170);
     }
     if (els.adj) els.adj.textContent = manualAdj === 0 ? '' : (manualAdj > 0 ? '+' + manualAdj : String(manualAdj));
+    if (els.dayline) els.dayline.textContent = 'today ' + fmtInt(dayBase + n);
     if (els.chip && !load().manualMode) {
       const flagged = lastOut.repsDetected - lastOut.cleanReps;
       els.chip.textContent = lastOut.armed
@@ -6113,20 +6277,9 @@ export default function train(host) {
     els.endBtn.hidden = false;
     els.endBtn.textContent = 'End';
     els.phaseLabel.textContent = 'manual log';
-    els.stage.innerHTML = `
-      <div id="repnum" class="num">0</div>
-      <div id="chip">tap here to log a rep</div>
-      <div class="corr">
-        <button class="step" id="minus" aria-label="one fewer">−</button>
-        <span class="n" id="adj"></span>
-        <button class="step" id="plus" aria-label="one more">+</button>
-      </div>`;
-    els.repnum = q('#repnum');
-    els.chip = q('#chip');
-    els.adj = q('#adj');
-    q('#minus').addEventListener('click', (e) => { e.stopPropagation(); correct(-1); });
-    q('#plus').addEventListener('click', (e) => { e.stopPropagation(); correct(1); });
+    bindCountFace('tap here to log a rep');
     tickTimer = setInterval(tick, 500);
+    readDayBase();
     paintCount();
   }
 
@@ -6185,40 +6338,49 @@ export default function train(host) {
   // ── summary ───────────────────────────────────────────────────
   function renderSummary() {
     const d = summary;
+    const manual = load().manualMode;
     els.phaseLabel.textContent = 'summary';
+    /* Manual sets have no camera, so "detected" is just the tap count and the tracking row would
+       report the quality of a sensor that never ran. */
     els.stage.innerHTML = `
       <div class="sheet">
         <div class="finum"><input id="finalIn" type="number" inputmode="numeric" min="0" max="999"></div>
-        <div class="sub" style="text-align:center;margin-top:-4px">final reps — correct it if the camera missed one</div>
+        <div class="sub" style="text-align:center;margin-top:-4px">${manual
+    ? 'reps — fix it if you double-tapped'
+    : 'final reps — correct it if the camera missed one'}</div>
         <div class="row" style="justify-content:center;margin:10px 0">
           <button class="step" id="sminus" aria-label="one fewer">−</button>
           <button class="step" id="splus" aria-label="one more">+</button>
         </div>
-        <div class="kv"><span>detected</span><b class="num" id="detOut"></b></div>
+        <div class="kv"><span>${manual ? 'taps' : 'detected'}</span><b class="num" id="detOut"></b></div>
         <div class="kv"><span>adjustment</span><b class="num" id="adjOut"></b></div>
         <div class="kv"><span>duration</span><b class="num" id="durOut"></b></div>
-        <div class="kv"><span>tracking</span><b class="num" id="qualOut"></b></div>
-        <div class="rule"></div>
+        ${manual ? '' : '<div class="kv"><span>tracking</span><b class="num" id="qualOut"></b></div>'}
+        <div class="kv"><span>today after this</span><b class="num" id="dayOut"></b></div>
         <div class="flags" id="flagRow"></div>
         <div class="field"><label for="notes">notes</label><textarea id="notes" rows="2" placeholder="optional"></textarea></div>
-        <div class="row" style="margin-top:14px">
+        <div class="sub" style="margin-top:4px;margin-bottom:12px" id="saveMsg"></div>
+        <div class="row sumcta">
           <button class="btn btn-quiet grow" id="again">New set</button>
           <button class="btn btn-primary grow" id="save">Save set</button>
         </div>
-        <div class="sub" style="margin-top:10px" id="saveMsg"></div>
       </div>`;
     const inp = q('#finalIn');
     inp.value = String(d.final);
     q('#detOut').textContent = String(d.detected);
     q('#durOut').textContent = Math.round(d.durationMs / 1000) + ' s';
-    q('#qualOut').textContent = d.quality.fpsMean + ' fps · ' + pct(d.quality.visMean) +
-      (d.quality.breaks ? ' · ' + d.quality.breaks + ' breaks' : '');
+    if (q('#qualOut')) {
+      q('#qualOut').textContent = d.quality.fpsMean + ' fps · ' + pct(d.quality.visMean) +
+        (d.quality.breaks ? ' · ' + d.quality.breaks + ' breaks' : '');
+    }
     const adjOut = q('#adjOut');
+    const dayOut = q('#dayOut');
     const sync = () => {
       const v = clamp(parseInt(inp.value, 10) || 0, 0, 999);
       d.final = v;
       const adj = v - d.detected;
       adjOut.textContent = (adj > 0 ? '+' : '') + adj;
+      dayOut.textContent = fmtInt(dayBase + v);
     };
     inp.addEventListener('input', sync);
     q('#sminus').addEventListener('click', () => { inp.value = String(Math.max(0, (parseInt(inp.value, 10) || 0) - 1)); sync(); });
@@ -6301,7 +6463,9 @@ export default function train(host) {
         if (!plankSince) plankSince = now;
         else if (now - plankSince > load().armHoldMs + 400 && !cdTimer) startCountdown(5);
       } else plankSince = 0;
-      paintPill(f);
+      /* The statusbar under the preview already carries fps and tracking, so the overlay on the
+         video says what the numbers mean instead of repeating them. */
+      paintPill(f, f.quality < 0.35 ? 'not seeing you yet' : f.quality < 0.6 ? 'partly in frame' : 'in frame');
       return;
     }
 
@@ -6354,9 +6518,10 @@ export default function train(host) {
     lostShown = false;
   }
 
-  function paintPill(f) {
+  function paintPill(f, text) {
     els.pill.className = 'pill' + (f.quality < 0.35 ? ' bad' : f.quality < 0.6 ? ' warn' : '');
-    els.pillText.textContent = Math.round(f.fps) + ' fps · ' + pct(f.quality) + ' tracked';
+    els.pillText.textContent = text
+      || (Math.round(f.fps) + ' fps · ' + pct(f.quality) + ' tracked');
   }
 
   function tick() {
@@ -6440,6 +6605,7 @@ export default function train(host) {
 
   return {
     unmount() {
+      document.body.classList.remove('in-set');
       if (cdTimer) clearInterval(cdTimer);
       if (tickTimer) clearInterval(tickTimer);
       if (tracker) { if (tracker.stop) tracker.stop(); if (tracker.dispose) tracker.dispose(); }
@@ -7885,6 +8051,8 @@ const BASE = process.argv[2] || 'http://127.0.0.1:8099';
 const SCHEMES = (process.env.SCHEMES || 'dark,light').split(',');
 const SHOTS = process.env.SHOTS !== '0';
 const ROUTES = (process.env.ROUTES || '/today,/train,/train@count,/train@summary,/progress,/badges,/settings').split(',');
+// Set EXPECTED=<stamp> when auditing a deployment: a stale CDN copy of the build is not the build.
+const EXPECTED = process.env.EXPECTED || '';
 // A route can carry a state suffix — /train@count walks the view into the counting screen before
 // measuring it, so the rubric covers the phases a static hash navigation never reaches.
 const STATES = {
@@ -7973,6 +8141,8 @@ await send('Network.enable');
 // This is a design audit of the files on disk, so nothing may come from a cache: the service
 // worker precaches every asset and would happily serve last night's build.
 await send('Network.setCacheDisabled', { cacheDisabled: true });
+// The app's own service worker would answer every request from its precache, hiding what is on the server.
+await send('Network.setBypassServiceWorker', { bypass: true }).catch(() => {});
 
 // The in-page probe: one pass over the rendered DOM, returns every finding.
 const PROBE = `(() => {
@@ -8092,14 +8262,23 @@ const PROBE = `(() => {
 
 const report = {};
 for (const scheme of SCHEMES) {
-  for (const spec of ROUTES) {
+  for (const [i, spec] of ROUTES.entries()) {
     const [route, state] = spec.split('@');
-    const url = `${BASE}/index.html#${route}`;
+    // A distinct query string per route forces a real document load. Changing only the hash would keep
+    // the first document alive for the whole run, so every route after the first would measure one build.
+    const url = `${BASE}/index.html?audit=${Date.now()}${i}#${route}`;
     consoleErrors = [];
     await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 2, mobile: true });
     await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
     await send('Page.navigate', { url });
     await sleep(2500);
+    // The app's own service worker answers from its precache, which can be an older build than the server's.
+    await evalJs(`(async () => {
+      const rs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map((r) => r.unregister()));
+      if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+      return rs.length;
+    })()`, 'sw-clear');
     await evalJs(`import('${BASE}/tools/seed.js').then(m => m.seed(90))`, 'seed');
     await sleep(1200);
     await evalJs(`location.hash = ${JSON.stringify(route)}`, 'route');
@@ -8107,6 +8286,9 @@ for (const scheme of SCHEMES) {
     if (state) { await evalJs(STATES[state], state); await sleep(700); }
     const raw = await evalJs(PROBE, 'probe');
     const data = JSON.parse(raw);
+    data.build = await evalJs(
+      `fetch('sw.js?bust=' + Date.now()).then((r) => r.text()).then((t) => (t.match(/pushups-v-(\\d+)/) || [])[1] || 'none')`,
+      'build');
     data.consoleErrors = consoleErrors.slice();
     report[`${scheme}:${spec}`] = data;
     if (SHOTS) {
@@ -8132,6 +8314,7 @@ for (const [key, d] of Object.entries(report)) {
   const hig = d.targets.filter((t) => !t.aa_fail);
   const accentTotal = Object.entries(d.accents).filter(([k]) => !k.endsWith('_ex'));
   const issues = [];
+  if (EXPECTED && d.build !== EXPECTED) issues.push(`build ${d.build} != ${EXPECTED}`);
   if (contrast.length) issues.push(`contrast ${contrast.length}`);
   if (aa.length) issues.push(`AA-target ${aa.length}`);
   if (hig.length) issues.push(`44pt-target ${hig.length}`);
