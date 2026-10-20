@@ -1,14 +1,20 @@
 import { load, save, params, setParam, resetParams, PRESETS } from '../settings.js';
 import { exportJSON, importJSON, countSets } from '../db.js';
+import { forgetCache, loadGoals, loadPasses, loadStreak, passesThisWeek, saveGoals, saveStreak } from '../goals.js';
+import { dayKey } from '../stats.js';
 import { download } from '../util.js';
 import { platformInfo, persistentStatus, requestPersistent, tryBadging } from '../upgrade.js';
 
 const SEL = (id, opts, val) => `<select id="${id}">` +
   opts.map(([v, l]) => `<option value="${v}"${v === val ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
 
+const STREAK_OPTS = [['weekly', 'weeks on target'], ['daily', 'days in a row']];
+const PASS_OPTS = ['0', '1', '2', '3'];
+
 export default function settingsView(host) {
   const s = load();
   const p = params();
+  const passOpts = PASS_OPTS.map((v) => [v, v === '0' ? 'off' : v === '1' ? 'one a week' : v + ' a week']);
 
   host.innerHTML = `
     <div class="list">
@@ -55,6 +61,22 @@ export default function settingsView(host) {
         <div class="field"><label for="fps">Detection rate cap <b id="fpsOut"></b></label>
           <input type="range" id="fps" min="10" max="30" step="1"></div>
         <label class="tog"><span>Manual tap-to-log<span class="sub">no camera at all</span></span><input type="checkbox" id="manualMode"></label>
+      </div>
+      <div class="rule"></div>
+      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Goals</h2>
+        <div class="field"><label for="gdaily">Daily <b id="gdailyOut"></b></label>
+          <input type="range" id="gdaily" min="0" max="300" step="5"></div>
+        <div class="field"><label for="gweekly">Weekly <b id="gweeklyOut"></b></label>
+          <input type="range" id="gweekly" min="0" max="2000" step="25"></div>
+        <div class="field"><label for="gyearly">This year <b id="gyearlyOut"></b></label>
+          <input type="range" id="gyearly" min="0" max="50000" step="500"></div>
+        <div class="sub" style="margin-top:2px">zero switches that target off — the Today ring only counts the daily one</div>
+        <div class="rule"></div>
+        <div class="field"><label for="streakMode">Streak counts</label>${SEL('streakMode', STREAK_OPTS)}</div>
+        <div class="sub" id="streakHelp" style="margin:-4px 0 10px">weeks: a week stays alive by hitting the weekly total</div>
+        <div class="field"><label for="passes">Rest passes</label>${SEL('passes', passOpts)}</div>
+        <div class="sub" style="margin:-4px 0 6px">a pass keeps a streak alive through a day you skipped</div>
+        <div class="kv"><span>passes left this week</span><b class="num" id="passesLeft">…</b></div>
       </div>
       <div class="rule"></div>
       <div class="pad"><h2 class="h1" style="margin:0 0 6px">Data</h2>
@@ -161,6 +183,49 @@ export default function settingsView(host) {
   }
   syncAll();
 
+  // ── goals and streak rules ────────────────────────────────────
+  const fmtGoal = (key, v) => (v === 0 ? 'off' : v + ' ' + (key === 'gyearly' ? 'reps this year' : 'reps'));
+
+  async function paintPasses() {
+    const cfg = await loadStreak();
+    const passes = await loadPasses();
+    q('#passesLeft').textContent = cfg.passesPerWeek === 0
+      ? 'off'
+      : String(Math.max(0, cfg.passesPerWeek - await passesThisWeek(passes, dayKey(Date.now()))));
+  }
+
+  function streakHelp(mode) {
+    q('#streakHelp').textContent = mode === 'daily'
+      ? 'days: every day either hits the daily total or spends a rest pass'
+      : 'weeks: a week stays alive by hitting the weekly total';
+  }
+
+  Promise.all([loadGoals(), loadStreak()]).then(([g, cfg]) => {
+    for (const [id, val] of [['gdaily', g.daily], ['gweekly', g.weekly], ['gyearly', g.yearly]]) {
+      q('#' + id).value = String(val);
+      q('#' + id + 'Out').textContent = fmtGoal(id, val);
+      q('#' + id).addEventListener('input', (e) => {
+        const v = Number(e.target.value);
+        q('#' + id + 'Out').textContent = fmtGoal(id, v);
+        saveGoals({ [id.slice(1)]: v }).catch(() => { q('#dataMsg').textContent = 'could not save goals'; });
+      });
+    }
+    q('#streakMode').value = cfg.mode;
+    q('#passes').value = String(cfg.passesPerWeek);
+    streakHelp(cfg.mode);
+    paintPasses().catch(() => { q('#passesLeft').textContent = '?'; });
+  }).catch(() => {
+    q('#gdailyOut').textContent = '?';
+    q('#dataMsg').textContent = 'goals unavailable — the database is not readable in this browser';
+  });
+
+  q('#streakMode').addEventListener('change', (e) => {
+    saveStreak({ mode: e.target.value }).then(() => { streakHelp(e.target.value); paintPasses(); });
+  });
+  q('#passes').addEventListener('change', (e) => {
+    saveStreak({ passesPerWeek: Number(e.target.value) }).then(paintPasses);
+  });
+
   countSets().then((n) => { q('#setCount').textContent = String(n); }).catch(() => { q('#setCount').textContent = '?'; });
   persistentStatus().then(async (ok) => {
     q('#persist').textContent = ok ? 'granted' : 'not granted';
@@ -188,8 +253,13 @@ export default function settingsView(host) {
     const text = await file.text();
     if (!confirm('Merge sets from ' + file.name + ' into this phone?')) return;
     const res = await importJSON(text);
-    q('#dataMsg').textContent = res.ok ? 'Imported ' + res.added + ' sets.' : 'Import failed: ' + res.error;
-    if (res.ok) countSets().then((n) => { q('#setCount').textContent = String(n); });
+    q('#dataMsg').textContent = res.ok
+      ? 'Imported ' + res.added + ' sets' + (res.metaWritten ? ' and ' + res.metaWritten + ' settings records' : '') + '.'
+      : 'Import failed: ' + res.error;
+    if (res.ok) {
+      countSets().then((n) => { q('#setCount').textContent = String(n); });
+      forgetCache();
+    }
   });
   q('#badgeTest').addEventListener('click', () => {
     const ok = tryBadging(7);

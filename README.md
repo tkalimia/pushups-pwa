@@ -76,6 +76,8 @@ index.html            app shell, tab bar, service-worker registration
 manifest.webmanifest  name, icons, standalone display
 sw.js                 generated: versioned cache + precache list + update flow
 css/app.css           palette, safe-area insets, dark and light
+css/today.css         goal ring, streak line, missed-day sheet
+css/progress.css      heatmap grid, chart axes, range switcher
 js/main.js            hash router, update prompt, wake-lock and storage sentinels
 js/camera.js          getUserMedia lifecycle + human recovery copy
 js/pose.js            MediaPipe landmarker, gpu→cpu fallback, 15–30 fps, skeleton overlay
@@ -83,7 +85,8 @@ js/counter.js         state machine: hysteresis, arm gate, flags, presets, one-t
 js/one-euro.js        smoothing for elbow angle
 js/workout.js         set lifecycle helpers (modes arrive in phase 3)
 js/db.js              IndexedDB v1: sets, reps, meta + export/import
-js/stats.js           aggregation (phase 2)
+js/stats.js           day/week/month/year buckets, streaks, records, estimates, heatmap
+js/goals.js           daily/weekly/yearly goals, streak mode, rest passes (stored in db meta)
 js/badges.js          rule engine (phase 3)
 js/plans.js           progression plans (phase 3)
 js/reminders.js       due-today card, Badging API, .ics (phase 3)
@@ -95,7 +98,8 @@ vendor/mediapipe/     tasks-vision bundle + wasm, self-hosted
 models/               pose_landmarker_lite.task, pose_landmarker_full.task
 fonts/                Barlow Semi Condensed (the rep number), IBM Plex Sans (everything else)
 icons/                generated app icons
-tools/                asset fetcher, icon generator, sw stamper, dev server
+tools/                asset fetcher, icon generator, sw stamper, dev server,
+                      shots.mjs (headless iPhone screenshot harness), seed.js (fixture data)
 scripts/              dev.sh, deploy.sh
 ```
 
@@ -104,7 +108,7 @@ scripts/              dev.sh, deploy.sh
 | phase | what |
 |---|---|
 | 1 | counter core, setup, lifecycle, correction, saving, voice, offline, counter lab |
-| 2 | Today with goal ring, History heatmap, charts, records, goals, streaks, export/import polish |
+| 2 | ✅ Today with goal ring, history heatmap, charts, records, goals, streaks, export/import of goals |
 | 3 | badge engine, workout modes, plans, Layer A reminders (in-app card, icon badge, `.ics`) |
 | 4 | threshold tuning from your detected-vs-corrected data, performance, accessibility |
 | 5 | optional Layer B Web Push via a Cloudflare Worker with VAPID + cron |
@@ -119,5 +123,11 @@ scripts/              dev.sh, deploy.sh
   appears for a Home Screen install.
 - Offline is proven after a first successful load with the model fetched. Clearing Safari website
   data, or iOS deciding the app is stale, drops the cache — reopen it online once and it rebuilds.
-- Phase 2/3 screens are placeholders: tabs exist, content arrives later. Recorded data is already in
-  the final schema, so nothing needs re-entering.
+- The Badges tab is still a placeholder (phase 3). Today, Progress and Settings are live.
+- Charts only ever show what is on this phone. Export after every meaningful session — a cleared
+  Safari website-data drops both the history and the offline cache.
+- `estimatedMax` is a floor plus a documented allowance (+12% of your best recent set, capped at
+  +10), not a measurement. The milestone date is a least-squares fit over your last 12 weekly best
+  sets and moves as soon as you log one real set.
+- Tempo and depth consistency need per-rep rows, which only sets saved by the camera have. Manual
+  sets and anything imported from an older export show as unmeasured.

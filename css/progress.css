@@ -1,0 +1,188 @@
+/* Progress screen only. Tokens and shared classes (.pad .row .col .kv .list .btn .flags .rule
+   .num .sub .h1) come from css/app.css and are reused as-is — nothing here redefines them.
+   Prefix .pg- keeps this file and css/today.css out of each other's way.
+   No :has(), no dvh/svh, no container queries, no aspect-ratio on flex children. */
+
+/* ── header ────────────────────────────────────────────────────── */
+.pg-top{padding-top:16px;padding-bottom:2px}
+.pg-sum{color:var(--muted);font-size:13px;margin:6px 0 0;font-variant-numeric:tabular-nums}
+.pg-error{color:var(--rose);font-size:13px;margin:6px 0 0;overflow-wrap:anywhere}
+.pg-caption{font-size:12px;line-height:1.4;margin:6px 0 0;overflow-wrap:anywhere}
+
+/* ── section furniture (varied rhythm: band, plain, bordered, list) ── */
+.pg-sec{padding-top:18px;padding-bottom:4px}
+.pg-box{background:var(--sheet);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
+  padding-top:13px;padding-bottom:12px;margin-top:18px}
+.pg-headrow{display:block}
+.pg-headtitle{font:600 15px/1.3 var(--ui)}
+.pg-headsub{color:var(--muted);font-size:12px;margin-top:1px;overflow-wrap:anywhere}
+.pg-cap{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;padding-top:14px;padding-bottom:6px}
+.pg-captxt{font-size:13px;color:var(--text)}
+.pg-capdim{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.pg-capend{padding-bottom:12px}
+
+/* ── calendar heatmap: the hero band ───────────────────────────── */
+.pg-heatsec{background:var(--sheet);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+.pg-heatrow{display:flex;gap:var(--pg-gap,2px);width:max-content;max-width:100%;margin:8px auto 0}
+.pg-hcol{display:flex;flex-direction:column;gap:0;flex:none;position:relative;border-radius:4px}
+/* this week: a faint band plus a brass tick above the column, so it never reads as a stray outline */
+.pg-hcol.now{background:var(--tint)}
+.pg-hcol.now::before{content:'';position:absolute;left:0;right:0;top:-6px;height:2px;
+  border-radius:1px;background:var(--brass)}
+.pg-hcell{box-sizing:content-box;position:relative;flex:none;width:var(--pg-cell,10px);height:24px;
+  margin:0 -3px;padding:0 3px;border:0;background:none;display:flex;align-items:center;
+  justify-content:center;cursor:pointer;-webkit-appearance:none;transition:opacity .12s linear}
+.pg-hcell:active{opacity:.5}
+.pg-hcell[disabled]{cursor:default}
+.pg-hcell[disabled]:active{opacity:1}
+.pg-hsq{display:block;width:var(--pg-cell,10px);height:var(--pg-cell,10px);border-radius:2px;
+  background:var(--tint);box-shadow:inset 0 0 0 1px var(--hair);opacity:1}
+.pg-hsq.lv1{background:var(--track);box-shadow:none;opacity:.32}
+.pg-hsq.lv2{background:var(--track);box-shadow:none;opacity:.55}
+.pg-hsq.lv3{background:var(--track);box-shadow:none;opacity:.78}
+.pg-hsq.lv4{background:var(--track);box-shadow:none;opacity:1}
+/* the ring sits on the cell, not the square, so a low level does not fade it out */
+.pg-hcell.today::before{content:'';position:absolute;left:1px;right:1px;top:2px;bottom:2px;
+  border:1.5px solid var(--brass);border-radius:5px}
+.pg-legend{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;line-height:1.4}
+.pg-legend .pg-hsq{width:10px;height:10px;flex:none}
+
+/* ── segmented controls ────────────────────────────────────────── */
+.pg-seg{display:flex;gap:6px;padding-top:4px;padding-bottom:8px;flex-wrap:wrap}
+.pg-segmini{gap:4px;padding-bottom:4px}
+.pg-segb{flex:1 1 0;min-width:0;min-height:44px;padding:10px 6px;border-radius:10px;
+  border:1px solid var(--hair);background:var(--tint);color:var(--muted);
+  font:600 14px/1.1 var(--ui);cursor:pointer;-webkit-appearance:none;transition:color .15s linear}
+.pg-segb:active{opacity:.65}
+.pg-segb.on{color:var(--text);background:var(--hair);border-color:transparent;
+  box-shadow:inset 0 -2px 0 var(--track)}
+.pg-segmini .pg-segb{min-height:40px;font-size:13px;font-weight:600}
+
+/* ── bar chart (hand-rolled divs) ──────────────────────────────── */
+.pg-barchart{padding-left:16px;padding-right:16px;padding-bottom:2px}
+.pg-plotempty{border:1px dashed var(--hair);border-radius:8px;padding:16px 12px;text-align:center;
+  color:var(--muted);font-size:13px}
+.pg-plot{position:relative;display:flex;align-items:stretch;gap:2px;height:112px}
+.pg-slot{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pg-bint{flex:1;min-height:0;display:flex;align-items:flex-end}
+.pg-bar{display:block;width:100%;min-height:0;background:var(--track);opacity:.78;border-radius:2px 2px 0 0}
+.pg-bar.hi{opacity:1}
+.pg-tick{display:block;height:3px;width:100%;flex:none;background:var(--muted);border-radius:1px}
+.pg-goalline{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--brass);
+  pointer-events:none}
+.pg-goaltag{position:absolute;left:0;top:-9px;font-size:11px;color:var(--brass);
+  background:var(--bg);padding:0 4px;font-variant-numeric:tabular-nums}
+.pg-axis{display:flex;gap:2px;margin-top:5px;overflow:hidden}
+.pg-aslot{flex:1 1 0;min-width:0;text-align:center}
+.pg-atext{display:inline-block;font-size:10px;line-height:1.2;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg-axisline{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
+
+/* ── sparkline / step chart (inline SVG) ───────────────────────── */
+.pg-spark{display:block;width:100%;margin:4px 0 0}
+.pg-spark .pg-base{fill:none;stroke:var(--hair);stroke-width:1;vector-effect:non-scaling-stroke}
+.pg-spark .pg-line{fill:none;stroke:var(--track);stroke-width:1.6;stroke-linejoin:round;
+  stroke-linecap:round;vector-effect:non-scaling-stroke}
+.pg-spark .pg-area{fill:var(--track);opacity:.13;stroke:none}
+.pg-spark .pg-dot{fill:var(--track);stroke:none}
+.pg-spark.brass .pg-line{stroke:var(--brass)}
+.pg-spark.brass .pg-area{fill:var(--brass);opacity:.12}
+.pg-spark.brass .pg-dot{fill:var(--brass)}
+.pg-spark.plum .pg-line{stroke:var(--plum)}
+.pg-spark.plum .pg-area{fill:var(--plum);opacity:.13}
+.pg-spark.plum .pg-dot{fill:var(--plum)}
+
+/* ── numbers ───────────────────────────────────────────────────── */
+.pg-numrow{display:flex;align-items:baseline;gap:10px;padding:6px 0 2px}
+.pg-num{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;line-height:.9;font-size:min(52px,14vw);color:var(--num);flex:none}
+.pg-numsub{flex:1;min-width:0;color:var(--muted);font-size:12.5px;overflow-wrap:anywhere}
+
+/* ── target + projection ───────────────────────────────────────── */
+.pg-targetrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0 2px;font-size:12px}
+input.pg-tin{width:88px;flex:none;font-family:var(--display);font-weight:700;font-size:20px;
+  line-height:1.1;text-align:center;font-variant-numeric:tabular-nums;padding:8px 6px}
+.pg-proj{font-size:15px;line-height:1.45;margin:8px 0 0;overflow-wrap:anywhere}
+.pg-proj.done{color:var(--brass)}
+.pg-projdate{font-size:19px;color:var(--brass);margin-right:4px}
+
+/* ── form consistency ──────────────────────────────────────────── */
+.pg-consgrid{display:flex;gap:16px;margin:8px 0 2px}
+.pg-cons{flex:1 1 0;min-width:0}
+.pg-conshead{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.pg-conslbl{font-size:13px;color:var(--text)}
+.pg-consval{font-size:16px;color:var(--num);font-variant-numeric:tabular-nums}
+.pg-consfoot{font-size:11px;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+
+/* ── records ───────────────────────────────────────────────────── */
+.pg-key{color:var(--muted);flex:none;min-width:0;font-size:14px}
+.pg-valwrap{display:flex;flex-direction:column;align-items:flex-end;min-width:0;text-align:right}
+.pg-val{font-family:var(--display);font-weight:700;font-size:16px;line-height:1.25;
+  font-variant-numeric:tabular-nums;color:var(--num)}
+.pg-valmeta{font-size:11.5px;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
+#pgFlags .flags{padding-left:0;padding-right:0}
+
+/* ── time of day ───────────────────────────────────────────────── */
+.pg-propbar{display:flex;gap:2px;height:22px;margin:10px 0 4px;border-radius:4px;overflow:hidden}
+.pg-propseg{position:relative;flex:1 1 0;min-width:0;display:flex;align-items:center;
+  justify-content:center;border-radius:2px}
+.pg-propseg::before{content:'';position:absolute;left:0;right:0;top:0;bottom:0;
+  background:var(--track);opacity:.32;border-radius:2px}
+.pg-propseg.lv2::before{opacity:.55}
+.pg-propseg.lv3::before{opacity:.78}
+.pg-propseg.lv4::before{opacity:1}
+.pg-propseg.empty::before{background:var(--tint);opacity:1}
+.pg-propnum{position:relative;font-size:11px;font-weight:600;color:var(--text);
+  font-variant-numeric:tabular-nums}
+.pg-todrow{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--hair);
+  font-size:14px}
+.pg-todrow .pg-hsq{width:10px;height:10px;flex:none;align-self:center}
+.pg-todlbl{flex:none;width:58px;font-variant-numeric:tabular-nums}
+.pg-todsub{flex:1;min-width:0;color:var(--muted);font-size:12px;text-align:right;overflow-wrap:anywhere}
+.pg-todpct{flex:none;width:48px;text-align:right;font-size:15px;font-variant-numeric:tabular-nums;
+  color:var(--num)}
+
+.pg-foot{padding-top:16px;padding-bottom:4px;font-size:12px;line-height:1.45}
+
+/* ── day sheet ─────────────────────────────────────────────────── */
+.pg-scrim{position:fixed;left:0;right:0;top:0;bottom:0;z-index:80;display:flex;align-items:flex-end;
+  justify-content:center;background:rgba(5,10,9,.55);animation:pg-fade .18s linear}
+@keyframes pg-fade{from{opacity:0}to{opacity:1}}
+.pg-panel{width:100%;max-width:520px;max-height:85%;overflow:auto;background:var(--sheet);
+  border-top:1px solid var(--hair);border-radius:16px 16px 0 0;padding:14px 16px calc(16px + var(--sab))}
+.pg-panelhead{display:flex;align-items:center;gap:10px}
+.pg-paneltitle{flex:1;min-width:0;font:600 18px/1.3 var(--ui)}
+.pg-panellbl{display:block;font-size:12px;color:var(--muted);margin:2px 0 8px;
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.pg-close{background:none;border:0;border-radius:999px;color:var(--track);font:inherit;font-size:15px;
+  padding:10px 14px;min-height:44px;flex:none;cursor:pointer;-webkit-appearance:none}
+.pg-close:active{opacity:.6}
+.pg-panelempty{padding:6px 0 2px}
+.pg-panelbody{padding-bottom:2px}
+.pg-srow{border-bottom:1px solid var(--hair)}
+.pg-smain{display:flex;align-items:center;gap:8px;min-height:52px;flex-wrap:wrap}
+.pg-sopen{flex:1;min-width:0;display:flex;align-items:center;gap:12px;margin:0;padding:8px 0;
+  background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;
+  -webkit-appearance:none;transition:opacity .12s linear}
+.pg-sopen:active{opacity:.55}
+.pg-snum{font-family:var(--display);font-weight:700;font-size:25px;line-height:1;min-width:46px;
+  text-align:right;font-variant-numeric:tabular-nums;color:var(--num);flex:none}
+.pg-smeta{flex:1;min-width:0;color:var(--muted);font-size:12.5px;line-height:1.35;overflow-wrap:anywhere}
+.pg-sedit{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 10px;flex:1 0 100%}
+.pg-sedit[hidden]{display:none}
+input.pg-in{width:88px;flex:none;font-family:var(--display);font-weight:700;font-size:22px;
+  line-height:1.1;text-align:center;font-variant-numeric:tabular-nums;padding:9px 8px}
+.pg-err{flex:1 0 100%;color:var(--rose);font-size:13px}
+.pg-smini{min-height:44px;padding:10px 16px;font-size:15px;flex:none}
+.pg-sadd{border-bottom:1px solid var(--hair);padding-bottom:2px}
+.pg-linkbtn{background:none;border:0;border-radius:999px;color:var(--track);font:inherit;font-size:15px;
+  padding:10px 14px;min-height:44px;margin-left:-14px;flex:none;cursor:pointer;-webkit-appearance:none}
+.pg-linkbtn:active{opacity:.6}
+.pg-addnote{font-size:11.5px;line-height:1.4;padding:0 0 8px}
+
+/* ── narrow phones: keep every row inside 320px ────────────────── */
+@media (max-width:349px){
+  .pg-num{font-size:min(46px,13vw)}
+  .pg-plot{height:100px}
+  .pg-consgrid{gap:12px}
+}

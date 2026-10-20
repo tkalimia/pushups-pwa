@@ -1,6 +1,8 @@
-const CACHE = 'pushups-v-2610202014';
+const CACHE = 'pushups-v-2610202121';
 const PRECACHE = [
   "css/app.css",
+  "css/progress.css",
+  "css/today.css",
   "fonts/barlow-semi-condensed.woff2",
   "fonts/ibm-plex-sans.woff2",
   "icons/apple-touch-icon.png",
@@ -14,10 +16,12 @@ const PRECACHE = [
   "js/counter.js",
   "js/db.js",
   "js/feedback.js",
+  "js/goals.js",
   "js/main.js",
   "js/one-euro.js",
   "js/pose.js",
   "js/settings.js",
+  "js/stats.js",
   "js/upgrade.js",
   "js/util.js",
   "js/views/badges.js",

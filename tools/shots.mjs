@@ -92,7 +92,7 @@ for (const [kind, arg] of steps) {
   if (kind === 'wait') { await sleep(Number(arg)); continue; }
   const expr = kind === 'click'
     ? `(() => { const el = document.querySelector(${JSON.stringify(arg)}); if (!el) throw new Error('no element ' + ${JSON.stringify(arg)}); el.click(); return 'clicked'; })()`
-    : `String(${arg})`;
+    : `(async () => { const v = await (${arg}); return typeof v === 'string' ? v : JSON.stringify(v); })()`;
   const res = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
   if (res.exceptionDetails) {
     console.error('  [step failed]', arg, res.exceptionDetails.exception?.description || '');

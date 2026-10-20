@@ -205,13 +205,16 @@ export async function setMeta(k, v) {
 }
 
 export async function exportJSON() {
-  const [sets, reps] = await Promise.all([collectAll('sets'), collectAll('reps')]);
+  const [sets, reps, meta] = await Promise.all([
+    collectAll('sets'), collectAll('reps'), collectAll('meta'),
+  ]);
   return JSON.stringify({
     app: 'pushups',
     schema: SCHEMA,
     exportedAt: Date.now(),
     sets: sets || [],
     reps: reps || [],
+    meta: meta || [],
   });
 }
 
@@ -247,13 +250,19 @@ export async function importJSON(text) {
   if (payload.reps !== undefined && !Array.isArray(payload.reps)) {
     return { ok: false, added: 0, error: 'Backup has a reps field that is not an array' };
   }
+  if (payload.meta !== undefined && !Array.isArray(payload.meta)) {
+    return { ok: false, added: 0, error: 'Backup has a meta field that is not an array' };
+  }
 
   const db = await open();
+  const incomingMeta = Array.isArray(payload.meta) ? payload.meta : [];
   const incomingSets = payload.sets;
   const incomingReps = Array.isArray(payload.reps) ? payload.reps : [];
-  const tx = db.transaction(['sets', 'reps'], 'readwrite');
+  const tx = db.transaction(['sets', 'reps', 'meta'], 'readwrite');
   const setStore = tx.objectStore('sets');
   const repStore = tx.objectStore('reps');
+  const metaStore = tx.objectStore('meta');
+  let metaWritten = 0;
   const idMap = new Map();
   let addedSets = 0;
   let addedReps = 0;
@@ -294,12 +303,21 @@ export async function importJSON(text) {
     addedReps++;
   }
 
+  // Goals, streak mode and spent rest passes travel in meta. The backup wins over the local copy:
+  // restoring onto a fresh phone should bring the targets you trained against, not reset them.
+  for (const row of incomingMeta) {
+    if (!row || typeof row !== 'object' || typeof row.k !== 'string' || !row.k) continue;
+    await toPromise(metaStore.put({ k: row.k, v: row.v }));
+    metaWritten += 1;
+  }
+
   await finish(tx);
   return {
     ok: true,
     added: addedSets,
     addedSets,
     addedReps,
+    metaWritten,
     error: null,
   };
 }

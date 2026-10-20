@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pushups PWA — phase 1 installer. Self-contained: writes every source file, then downloads
+# Pushups PWA — phase 2 installer (today, history heatmap, charts, goals and streaks). Self-contained: writes every source file, then downloads
 # the MediaPipe wasm + pose models + fonts and generates the icons. Re-runnable; overwrites
 # only files inside the app folder. Nothing here touches your saved sets (they live on the phone).
 set -euo pipefail
@@ -213,6 +213,298 @@ label.tog .sub{display:block;font-size:12px}
 .field>label b{color:var(--text);font-variant-numeric:tabular-nums}
 __EOF_css_app_css__
 
+mkdir -p 'css'
+cat > 'css/progress.css' <<'__EOF_css_progress_css__'
+/* Progress screen only. Tokens and shared classes (.pad .row .col .kv .list .btn .flags .rule
+   .num .sub .h1) come from css/app.css and are reused as-is — nothing here redefines them.
+   Prefix .pg- keeps this file and css/today.css out of each other's way.
+   No :has(), no dvh/svh, no container queries, no aspect-ratio on flex children. */
+
+/* ── header ────────────────────────────────────────────────────── */
+.pg-top{padding-top:16px;padding-bottom:2px}
+.pg-sum{color:var(--muted);font-size:13px;margin:6px 0 0;font-variant-numeric:tabular-nums}
+.pg-error{color:var(--rose);font-size:13px;margin:6px 0 0;overflow-wrap:anywhere}
+.pg-caption{font-size:12px;line-height:1.4;margin:6px 0 0;overflow-wrap:anywhere}
+
+/* ── section furniture (varied rhythm: band, plain, bordered, list) ── */
+.pg-sec{padding-top:18px;padding-bottom:4px}
+.pg-box{background:var(--sheet);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
+  padding-top:13px;padding-bottom:12px;margin-top:18px}
+.pg-headrow{display:block}
+.pg-headtitle{font:600 15px/1.3 var(--ui)}
+.pg-headsub{color:var(--muted);font-size:12px;margin-top:1px;overflow-wrap:anywhere}
+.pg-cap{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;padding-top:14px;padding-bottom:6px}
+.pg-captxt{font-size:13px;color:var(--text)}
+.pg-capdim{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.pg-capend{padding-bottom:12px}
+
+/* ── calendar heatmap: the hero band ───────────────────────────── */
+.pg-heatsec{background:var(--sheet);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+.pg-heatrow{display:flex;gap:var(--pg-gap,2px);width:max-content;max-width:100%;margin:8px auto 0}
+.pg-hcol{display:flex;flex-direction:column;gap:0;flex:none;position:relative;border-radius:4px}
+/* this week: a faint band plus a brass tick above the column, so it never reads as a stray outline */
+.pg-hcol.now{background:var(--tint)}
+.pg-hcol.now::before{content:'';position:absolute;left:0;right:0;top:-6px;height:2px;
+  border-radius:1px;background:var(--brass)}
+.pg-hcell{box-sizing:content-box;position:relative;flex:none;width:var(--pg-cell,10px);height:24px;
+  margin:0 -3px;padding:0 3px;border:0;background:none;display:flex;align-items:center;
+  justify-content:center;cursor:pointer;-webkit-appearance:none;transition:opacity .12s linear}
+.pg-hcell:active{opacity:.5}
+.pg-hcell[disabled]{cursor:default}
+.pg-hcell[disabled]:active{opacity:1}
+.pg-hsq{display:block;width:var(--pg-cell,10px);height:var(--pg-cell,10px);border-radius:2px;
+  background:var(--tint);box-shadow:inset 0 0 0 1px var(--hair);opacity:1}
+.pg-hsq.lv1{background:var(--track);box-shadow:none;opacity:.32}
+.pg-hsq.lv2{background:var(--track);box-shadow:none;opacity:.55}
+.pg-hsq.lv3{background:var(--track);box-shadow:none;opacity:.78}
+.pg-hsq.lv4{background:var(--track);box-shadow:none;opacity:1}
+/* the ring sits on the cell, not the square, so a low level does not fade it out */
+.pg-hcell.today::before{content:'';position:absolute;left:1px;right:1px;top:2px;bottom:2px;
+  border:1.5px solid var(--brass);border-radius:5px}
+.pg-legend{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;line-height:1.4}
+.pg-legend .pg-hsq{width:10px;height:10px;flex:none}
+
+/* ── segmented controls ────────────────────────────────────────── */
+.pg-seg{display:flex;gap:6px;padding-top:4px;padding-bottom:8px;flex-wrap:wrap}
+.pg-segmini{gap:4px;padding-bottom:4px}
+.pg-segb{flex:1 1 0;min-width:0;min-height:44px;padding:10px 6px;border-radius:10px;
+  border:1px solid var(--hair);background:var(--tint);color:var(--muted);
+  font:600 14px/1.1 var(--ui);cursor:pointer;-webkit-appearance:none;transition:color .15s linear}
+.pg-segb:active{opacity:.65}
+.pg-segb.on{color:var(--text);background:var(--hair);border-color:transparent;
+  box-shadow:inset 0 -2px 0 var(--track)}
+.pg-segmini .pg-segb{min-height:40px;font-size:13px;font-weight:600}
+
+/* ── bar chart (hand-rolled divs) ──────────────────────────────── */
+.pg-barchart{padding-left:16px;padding-right:16px;padding-bottom:2px}
+.pg-plotempty{border:1px dashed var(--hair);border-radius:8px;padding:16px 12px;text-align:center;
+  color:var(--muted);font-size:13px}
+.pg-plot{position:relative;display:flex;align-items:stretch;gap:2px;height:112px}
+.pg-slot{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pg-bint{flex:1;min-height:0;display:flex;align-items:flex-end}
+.pg-bar{display:block;width:100%;min-height:0;background:var(--track);opacity:.78;border-radius:2px 2px 0 0}
+.pg-bar.hi{opacity:1}
+.pg-tick{display:block;height:3px;width:100%;flex:none;background:var(--muted);border-radius:1px}
+.pg-goalline{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--brass);
+  pointer-events:none}
+.pg-goaltag{position:absolute;left:0;top:-9px;font-size:11px;color:var(--brass);
+  background:var(--bg);padding:0 4px;font-variant-numeric:tabular-nums}
+.pg-axis{display:flex;gap:2px;margin-top:5px;overflow:hidden}
+.pg-aslot{flex:1 1 0;min-width:0;text-align:center}
+.pg-atext{display:inline-block;font-size:10px;line-height:1.2;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg-axisline{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
+
+/* ── sparkline / step chart (inline SVG) ───────────────────────── */
+.pg-spark{display:block;width:100%;margin:4px 0 0}
+.pg-spark .pg-base{fill:none;stroke:var(--hair);stroke-width:1;vector-effect:non-scaling-stroke}
+.pg-spark .pg-line{fill:none;stroke:var(--track);stroke-width:1.6;stroke-linejoin:round;
+  stroke-linecap:round;vector-effect:non-scaling-stroke}
+.pg-spark .pg-area{fill:var(--track);opacity:.13;stroke:none}
+.pg-spark .pg-dot{fill:var(--track);stroke:none}
+.pg-spark.brass .pg-line{stroke:var(--brass)}
+.pg-spark.brass .pg-area{fill:var(--brass);opacity:.12}
+.pg-spark.brass .pg-dot{fill:var(--brass)}
+.pg-spark.plum .pg-line{stroke:var(--plum)}
+.pg-spark.plum .pg-area{fill:var(--plum);opacity:.13}
+.pg-spark.plum .pg-dot{fill:var(--plum)}
+
+/* ── numbers ───────────────────────────────────────────────────── */
+.pg-numrow{display:flex;align-items:baseline;gap:10px;padding:6px 0 2px}
+.pg-num{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;line-height:.9;font-size:min(52px,14vw);color:var(--num);flex:none}
+.pg-numsub{flex:1;min-width:0;color:var(--muted);font-size:12.5px;overflow-wrap:anywhere}
+
+/* ── target + projection ───────────────────────────────────────── */
+.pg-targetrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0 2px;font-size:12px}
+input.pg-tin{width:88px;flex:none;font-family:var(--display);font-weight:700;font-size:20px;
+  line-height:1.1;text-align:center;font-variant-numeric:tabular-nums;padding:8px 6px}
+.pg-proj{font-size:15px;line-height:1.45;margin:8px 0 0;overflow-wrap:anywhere}
+.pg-proj.done{color:var(--brass)}
+.pg-projdate{font-size:19px;color:var(--brass);margin-right:4px}
+
+/* ── form consistency ──────────────────────────────────────────── */
+.pg-consgrid{display:flex;gap:16px;margin:8px 0 2px}
+.pg-cons{flex:1 1 0;min-width:0}
+.pg-conshead{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.pg-conslbl{font-size:13px;color:var(--text)}
+.pg-consval{font-size:16px;color:var(--num);font-variant-numeric:tabular-nums}
+.pg-consfoot{font-size:11px;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+
+/* ── records ───────────────────────────────────────────────────── */
+.pg-key{color:var(--muted);flex:none;min-width:0;font-size:14px}
+.pg-valwrap{display:flex;flex-direction:column;align-items:flex-end;min-width:0;text-align:right}
+.pg-val{font-family:var(--display);font-weight:700;font-size:16px;line-height:1.25;
+  font-variant-numeric:tabular-nums;color:var(--num)}
+.pg-valmeta{font-size:11.5px;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
+#pgFlags .flags{padding-left:0;padding-right:0}
+
+/* ── time of day ───────────────────────────────────────────────── */
+.pg-propbar{display:flex;gap:2px;height:22px;margin:10px 0 4px;border-radius:4px;overflow:hidden}
+.pg-propseg{position:relative;flex:1 1 0;min-width:0;display:flex;align-items:center;
+  justify-content:center;border-radius:2px}
+.pg-propseg::before{content:'';position:absolute;left:0;right:0;top:0;bottom:0;
+  background:var(--track);opacity:.32;border-radius:2px}
+.pg-propseg.lv2::before{opacity:.55}
+.pg-propseg.lv3::before{opacity:.78}
+.pg-propseg.lv4::before{opacity:1}
+.pg-propseg.empty::before{background:var(--tint);opacity:1}
+.pg-propnum{position:relative;font-size:11px;font-weight:600;color:var(--text);
+  font-variant-numeric:tabular-nums}
+.pg-todrow{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--hair);
+  font-size:14px}
+.pg-todrow .pg-hsq{width:10px;height:10px;flex:none;align-self:center}
+.pg-todlbl{flex:none;width:58px;font-variant-numeric:tabular-nums}
+.pg-todsub{flex:1;min-width:0;color:var(--muted);font-size:12px;text-align:right;overflow-wrap:anywhere}
+.pg-todpct{flex:none;width:48px;text-align:right;font-size:15px;font-variant-numeric:tabular-nums;
+  color:var(--num)}
+
+.pg-foot{padding-top:16px;padding-bottom:4px;font-size:12px;line-height:1.45}
+
+/* ── day sheet ─────────────────────────────────────────────────── */
+.pg-scrim{position:fixed;left:0;right:0;top:0;bottom:0;z-index:80;display:flex;align-items:flex-end;
+  justify-content:center;background:rgba(5,10,9,.55);animation:pg-fade .18s linear}
+@keyframes pg-fade{from{opacity:0}to{opacity:1}}
+.pg-panel{width:100%;max-width:520px;max-height:85%;overflow:auto;background:var(--sheet);
+  border-top:1px solid var(--hair);border-radius:16px 16px 0 0;padding:14px 16px calc(16px + var(--sab))}
+.pg-panelhead{display:flex;align-items:center;gap:10px}
+.pg-paneltitle{flex:1;min-width:0;font:600 18px/1.3 var(--ui)}
+.pg-panellbl{display:block;font-size:12px;color:var(--muted);margin:2px 0 8px;
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.pg-close{background:none;border:0;border-radius:999px;color:var(--track);font:inherit;font-size:15px;
+  padding:10px 14px;min-height:44px;flex:none;cursor:pointer;-webkit-appearance:none}
+.pg-close:active{opacity:.6}
+.pg-panelempty{padding:6px 0 2px}
+.pg-panelbody{padding-bottom:2px}
+.pg-srow{border-bottom:1px solid var(--hair)}
+.pg-smain{display:flex;align-items:center;gap:8px;min-height:52px;flex-wrap:wrap}
+.pg-sopen{flex:1;min-width:0;display:flex;align-items:center;gap:12px;margin:0;padding:8px 0;
+  background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;
+  -webkit-appearance:none;transition:opacity .12s linear}
+.pg-sopen:active{opacity:.55}
+.pg-snum{font-family:var(--display);font-weight:700;font-size:25px;line-height:1;min-width:46px;
+  text-align:right;font-variant-numeric:tabular-nums;color:var(--num);flex:none}
+.pg-smeta{flex:1;min-width:0;color:var(--muted);font-size:12.5px;line-height:1.35;overflow-wrap:anywhere}
+.pg-sedit{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 10px;flex:1 0 100%}
+.pg-sedit[hidden]{display:none}
+input.pg-in{width:88px;flex:none;font-family:var(--display);font-weight:700;font-size:22px;
+  line-height:1.1;text-align:center;font-variant-numeric:tabular-nums;padding:9px 8px}
+.pg-err{flex:1 0 100%;color:var(--rose);font-size:13px}
+.pg-smini{min-height:44px;padding:10px 16px;font-size:15px;flex:none}
+.pg-sadd{border-bottom:1px solid var(--hair);padding-bottom:2px}
+.pg-linkbtn{background:none;border:0;border-radius:999px;color:var(--track);font:inherit;font-size:15px;
+  padding:10px 14px;min-height:44px;margin-left:-14px;flex:none;cursor:pointer;-webkit-appearance:none}
+.pg-linkbtn:active{opacity:.6}
+.pg-addnote{font-size:11.5px;line-height:1.4;padding:0 0 8px}
+
+/* ── narrow phones: keep every row inside 320px ────────────────── */
+@media (max-width:349px){
+  .pg-num{font-size:min(46px,13vw)}
+  .pg-plot{height:100px}
+  .pg-consgrid{gap:12px}
+}
+__EOF_css_progress_css__
+
+mkdir -p 'css'
+cat > 'css/today.css' <<'__EOF_css_today_css__'
+/* Today screen only. Everything shared (tokens, .pad, .rule, .kv, .list, .btn, .soon) lives in
+   app.css and is reused as-is — nothing here redefines it. Prefix .tg- keeps the two phase-2
+   stylesheets from stepping on each other. No :has(), no dvh/svh, no container queries. */
+
+/* ── hero: the one big number ──────────────────────────────────── */
+.tg-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:16px 16px 2px}
+.tg-heronum{flex:1;min-width:0}
+.tg-total{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+  line-height:.88;font-size:min(76px,21vw);color:var(--num)}
+.tg-date{color:var(--muted);font-size:13px;margin-top:6px}
+.tg-unit{color:var(--muted);font-size:12px}
+.tg-note{color:var(--rose);font-size:13px;margin-top:6px;overflow-wrap:anywhere}
+
+/* ── goal ring ─────────────────────────────────────────────────── */
+.tg-ringwrap{position:relative;flex:none;width:88px;height:88px}
+.tg-ring{display:block;transform:rotate(-90deg)}
+.tg-ring .tg-track{stroke:var(--hair)}
+.tg-ring .tg-arc{stroke:var(--track);transition:stroke .25s linear}
+.tg-ring.met .tg-arc{stroke:var(--brass)}
+.tg-ringtext{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px;pointer-events:none}
+.tg-ringnum{font-family:var(--display);font-weight:700;font-size:21px;line-height:1;letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;color:var(--num)}
+.tg-ringlbl{font-size:11px;color:var(--muted)}
+.tg-goalnote{padding:4px 16px 2px;font-size:14px;color:var(--muted);min-height:20px}
+.tg-goalnote.met{color:var(--brass)}
+
+/* ── streak + rest pass ────────────────────────────────────────── */
+.tg-streak{padding:8px 16px 4px;gap:4px 10px;flex-wrap:wrap;min-height:36px}
+.tg-streakline{flex:1 1 auto;min-width:0}
+.tg-streaktxt{font-size:15px;color:var(--text)}
+.tg-streaktxt.dim{color:var(--muted);font-size:14px}
+.tg-streakwhy{font-size:13px;color:var(--rose);flex:1 0 100%;order:5}
+/* pull the pass button's label onto the same left edge as the copy above it */
+.tg-streak .tg-linkbtn{margin-left:-14px}
+
+/* ── week / month / year / lifetime ────────────────────────────── */
+.tg-minis{padding:0 16px}
+.tg-val{white-space:nowrap;font-weight:600;font-variant-numeric:tabular-nums}
+.tg-key{color:var(--muted);min-width:0}
+
+/* ── set rows ──────────────────────────────────────────────────── */
+.tg-head{padding:16px 16px 2px;font-size:13px;color:var(--muted)}
+.tg-empty{padding-top:8px;margin-top:0;margin-bottom:0}
+.tg-set{padding:0 16px;border-bottom:1px solid var(--hair)}
+.tg-setmain{display:flex;align-items:center;gap:8px;min-height:52px}
+.tg-editbtn{flex:1;min-width:0;display:flex;align-items:center;gap:12px;margin:0;padding:8px 0;
+  background:none;border:0;border-radius:0;color:inherit;font:inherit;text-align:left;
+  -webkit-appearance:none;cursor:pointer;transition:opacity .12s linear}
+.tg-editbtn:active{opacity:.55}
+/* author display beats the UA [hidden] rule, so every display-setting class we toggle needs this */
+.tg-editbtn[hidden]{display:none}
+.tg-setnum{font-family:var(--display);font-weight:700;font-size:25px;line-height:1;min-width:46px;
+  font-variant-numeric:tabular-nums;color:var(--num)}
+.tg-setmeta{flex:1;min-width:0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.tg-editline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px}
+.tg-editline[hidden]{display:none}
+input.tg-in{width:88px;flex:none;font-family:var(--display);font-weight:700;font-size:22px;line-height:1.1;
+  text-align:center;font-variant-numeric:tabular-nums;padding:9px 8px}
+.tg-err{flex:1 0 100%;color:var(--rose);font-size:13px}
+.tg-mini{min-height:44px;padding:10px 16px;font-size:15px;flex:none}
+
+/* ── footer honesty line ───────────────────────────────────────── */
+.tg-foot{padding:14px 16px 8px;font-size:13px;color:var(--muted)}
+
+/* ── missed days ───────────────────────────────────────────────── */
+.tg-quietrow{display:block;width:100%;text-align:left;padding:12px 16px;margin:0;min-height:44px;
+  background:none;border:0;color:var(--muted);font:inherit;font-size:14px;
+  border-top:1px solid var(--hair);border-radius:0;cursor:pointer;transition:opacity .12s linear}
+.tg-quietrow:active{opacity:.6}
+
+/* ── missed-day sheet ──────────────────────────────────────────── */
+.tg-scrim{position:fixed;left:0;right:0;top:0;bottom:0;z-index:80;display:flex;align-items:flex-end;
+  justify-content:center;background:rgba(5,10,9,.55);animation:tg-fade .18s linear}
+@keyframes tg-fade{from{opacity:0}to{opacity:1}}
+.tg-panel{width:100%;max-width:520px;max-height:85%;overflow:auto;background:var(--sheet);
+  border-top:1px solid var(--hair);border-radius:16px 16px 0 0;
+  padding:14px 16px calc(16px + var(--sab))}
+.tg-panelhead{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+.tg-paneltitle{flex:1;min-width:0;font:600 18px/1.3 var(--ui)}
+.tg-panellbl{display:block;font-size:12px;color:var(--muted);margin:2px 0 6px}
+.tg-gaprow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--hair)}
+.tg-gapday{flex:1;min-width:90px;font-size:15px}
+.tg-gapedit{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1 0 100%}
+.tg-gapedit[hidden]{display:none}
+.tg-linkbtn{background:none;border:0;border-radius:999px;color:var(--track);font:inherit;font-size:15px;
+  padding:10px 14px;min-height:44px;cursor:pointer;flex:none;transition:opacity .12s linear}
+.tg-linkbtn:active{opacity:.6}
+.tg-linkbtn.dim{color:var(--muted)}
+.tg-linkbtn[disabled]{opacity:.4}
+.tg-donetag{font-size:13px;color:var(--brass);padding:10px 0}
+
+/* ── link row to progress ──────────────────────────────────────── */
+.tg-prog{display:flex;align-items:center;gap:10px;min-height:48px;padding:12px 16px;
+  border-top:1px solid var(--hair);margin-top:10px;color:var(--muted);font-size:15px}
+.tg-prog .chev{font-size:19px;line-height:1;color:var(--muted)}
+__EOF_css_today_css__
+
 mkdir -p .
 cat > 'index.html' <<'__EOF_index_html__'
 <!doctype html>
@@ -231,6 +523,8 @@ cat > 'index.html' <<'__EOF_index_html__'
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/today.css">
+<link rel="stylesheet" href="css/progress.css">
 </head>
 <body>
 <div id="banner"></div>
@@ -1319,13 +1613,16 @@ export async function setMeta(k, v) {
 }
 
 export async function exportJSON() {
-  const [sets, reps] = await Promise.all([collectAll('sets'), collectAll('reps')]);
+  const [sets, reps, meta] = await Promise.all([
+    collectAll('sets'), collectAll('reps'), collectAll('meta'),
+  ]);
   return JSON.stringify({
     app: 'pushups',
     schema: SCHEMA,
     exportedAt: Date.now(),
     sets: sets || [],
     reps: reps || [],
+    meta: meta || [],
   });
 }
 
@@ -1361,13 +1658,19 @@ export async function importJSON(text) {
   if (payload.reps !== undefined && !Array.isArray(payload.reps)) {
     return { ok: false, added: 0, error: 'Backup has a reps field that is not an array' };
   }
+  if (payload.meta !== undefined && !Array.isArray(payload.meta)) {
+    return { ok: false, added: 0, error: 'Backup has a meta field that is not an array' };
+  }
 
   const db = await open();
+  const incomingMeta = Array.isArray(payload.meta) ? payload.meta : [];
   const incomingSets = payload.sets;
   const incomingReps = Array.isArray(payload.reps) ? payload.reps : [];
-  const tx = db.transaction(['sets', 'reps'], 'readwrite');
+  const tx = db.transaction(['sets', 'reps', 'meta'], 'readwrite');
   const setStore = tx.objectStore('sets');
   const repStore = tx.objectStore('reps');
+  const metaStore = tx.objectStore('meta');
+  let metaWritten = 0;
   const idMap = new Map();
   let addedSets = 0;
   let addedReps = 0;
@@ -1408,12 +1711,21 @@ export async function importJSON(text) {
     addedReps++;
   }
 
+  // Goals, streak mode and spent rest passes travel in meta. The backup wins over the local copy:
+  // restoring onto a fresh phone should bring the targets you trained against, not reset them.
+  for (const row of incomingMeta) {
+    if (!row || typeof row !== 'object' || typeof row.k !== 'string' || !row.k) continue;
+    await toPromise(metaStore.put({ k: row.k, v: row.v }));
+    metaWritten += 1;
+  }
+
   await finish(tx);
   return {
     ok: true,
     added: addedSets,
     addedSets,
     addedReps,
+    metaWritten,
     error: null,
   };
 }
@@ -1604,6 +1916,161 @@ export function countdownVoice(secondsLeft) {
   return words[s] || countWord(s);
 }
 __EOF_js_feedback_js__
+
+mkdir -p 'js'
+cat > 'js/goals.js' <<'__EOF_js_goals_js__'
+/* Goals, streak mode and rest-day passes. Config lives in IndexedDB meta (not localStorage) so a
+   JSON export carries the targets you trained against, and a restore on another phone brings the
+   streak rules with it. */
+
+import { getMeta, setMeta } from './db.js';
+import { addDays, byDay, dailyGoalStreak, dayKey, weekStart, weeklyGoalStreak } from './stats.js';
+
+export const GOAL_KEY = 'goals.v1';
+export const STREAK_KEY = 'streak.v1';
+export const PASS_KEY = 'passes.v1';
+
+export const DEFAULT_GOALS = { daily: 50, weekly: 350, yearly: 10000 };
+export const DEFAULT_STREAK = { mode: 'weekly', passesPerWeek: 1 };
+
+const cache = new Map();
+
+async function readKey(key, fallback) {
+  if (cache.has(key)) return cache.get(key);
+  let value = fallback;
+  try {
+    const raw = await getMeta(key);
+    if (raw && typeof raw === 'object') value = { ...fallback, ...raw };
+  } catch { /* cold or blocked db: fall back to defaults for this session only */ }
+  cache.set(key, value);
+  return value;
+}
+
+/** Drop the in-memory copy so the next read comes from the database (after a restore). */
+export function forgetCache() {
+  cache.clear();
+}
+
+async function writeKey(key, value) {
+  cache.set(key, value);
+  await setMeta(key, value);
+  return value;
+}
+
+export async function loadGoals() { return readKey(GOAL_KEY, DEFAULT_GOALS); }
+
+export async function saveGoals(patch) {
+  const base = await loadGoals();
+  const next = { ...base, ...(patch || {}) };
+  for (const k of ['daily', 'weekly', 'yearly']) {
+    const v = parseInt(next[k], 10);
+    next[k] = Number.isFinite(v) && v >= 0 ? Math.min(100000, v) : DEFAULT_GOALS[k];
+  }
+  return writeKey(GOAL_KEY, next);
+}
+
+export async function loadStreak() {
+  const base = await readKey(STREAK_KEY, DEFAULT_STREAK);
+  if (base.mode !== 'daily' && base.mode !== 'weekly') base.mode = DEFAULT_STREAK.mode;
+  base.passesPerWeek = Math.max(0, Math.min(3, parseInt(base.passesPerWeek, 10) || 0));
+  return base;
+}
+
+export async function saveStreak(patch) {
+  const base = await loadStreak();
+  return writeKey(STREAK_KEY, { ...base, ...(patch || {}) });
+}
+
+/** Day keys that were covered by a rest pass. Only the last 12 weeks are kept. */
+export async function loadPasses() {
+  const raw = await readKey(PASS_KEY, {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+export async function passesThisWeek(passes, fromKey) {
+  const wk = weekStart(fromKey || dayKey(Date.now()));
+  let n = 0;
+  for (let i = 0; i < 7; i++) if (passes[addDays(wk, i)]) n += 1;
+  return n;
+}
+
+/** Spend a rest pass on `day`. Returns { ok, reason } so the UI can say why it refused. */
+export async function usePass(day) {
+  const cfg = await loadStreak();
+  const passes = await loadPasses();
+  const key = day || dayKey(Date.now());
+  if (passes[key]) return { ok: false, reason: 'already used', passes };
+  if (cfg.passesPerWeek === 0) return { ok: false, reason: 'rest passes are off', passes };
+  const used = await passesThisWeek(passes, key);
+  if (used >= cfg.passesPerWeek) return { ok: false, reason: 'no passes left this week', passes };
+  const next = { ...passes, [key]: true };
+  const cutoff = addDays(dayKey(Date.now()), -84);
+  for (const k of Object.keys(next)) if (k < cutoff) delete next[k];
+  await writeKey(PASS_KEY, next);
+  return { ok: true, passes: next };
+}
+
+export async function undoPass(day) {
+  const passes = await loadPasses();
+  if (!passes[day]) return { passes };
+  const next = { ...passes };
+  delete next[day];
+  await writeKey(PASS_KEY, next);
+  return { passes: next };
+}
+
+/** Everything the Today and Progress headers need, from one set list. */
+export async function goalStatus(sets, todayKey) {
+  const goals = await loadGoals();
+  const cfg = await loadStreak();
+  const passes = await loadPasses();
+  const days = byDay(sets);
+  const key = todayKey || dayKey(Date.now());
+  const today = days.get(key);
+  return {
+    goals,
+    streakCfg: cfg,
+    passes,
+    passesLeft: Math.max(0, cfg.passesPerWeek - await passesThisWeek(passes, key)),
+    daily: { goal: goals.daily, reps: today ? today.reps : 0, pct: goals.daily ? Math.min(1, (today ? today.reps : 0) / goals.daily) : 0 },
+    weekly: pctOf(days, goals.weekly, 'week', key),
+    yearly: pctOf(days, goals.yearly, 'year', key),
+    streak: cfg.mode === 'daily'
+      ? { mode: 'daily', n: dailyGoalStreak(days, goals.daily, key, new Set(Object.keys(passes))), unit: 'days' }
+      : { mode: 'weekly', n: weeklyGoalStreak(days, goals.weekly, key), unit: 'weeks' },
+  };
+}
+
+function pctOf(days, goal, span, key) {
+  const reps = span === 'week' ? weekToDate(days, key) : yearToDate(days, key);
+  return { goal, reps, pct: goal ? Math.min(1, reps / goal) : 0, left: Math.max(0, goal - reps) };
+}
+
+function weekToDate(days, key) {
+  const wk = weekStart(key);
+  let n = 0;
+  for (let i = 0; i < 7 && addDays(wk, i) <= key; i++) {
+    const d = days.get(addDays(wk, i));
+    if (d) n += d.reps;
+  }
+  return n;
+}
+
+function yearToDate(days, key) {
+  const jan = key.slice(0, 4) + '-01-01';
+  let n = 0;
+  for (const [k, d] of days) if (k >= jan && k <= key) n += d.reps;
+  return n;
+}
+
+/** For the reminder layer: has today's goal already been banked? */
+export async function goalMetToday(sets, todayKey) {
+  const goals = await loadGoals();
+  const key = todayKey || dayKey(Date.now());
+  const d = byDay(sets).get(key);
+  return !!d && d.reps >= goals.daily;
+}
+__EOF_js_goals_js__
 
 mkdir -p 'js'
 cat > 'js/main.js' <<'__EOF_js_main_js__'
@@ -2327,6 +2794,436 @@ export function clearOverridesForPreset() {
 __EOF_js_settings_js__
 
 mkdir -p 'js'
+cat > 'js/stats.js' <<'__EOF_js_stats_js__'
+/* Aggregation over saved sets + reps. Pure functions: every entry point takes plain arrays so the
+   whole layer is testable without IndexedDB, and views decide what to fetch.
+   Week = Monday..Sunday (local). All day keys are 'YYYY-MM-DD' from db.localDay. */
+
+import { mean, sum } from './util.js';
+
+const DAY_MS = 86400000;
+
+/* ── calendar helpers ──────────────────────────────────────────── */
+
+export function dayKey(ms) {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+export function dayFromKey(key) {
+  const [y, m, d] = String(key).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1).getTime();
+}
+
+export function addDays(key, n) {
+  return dayKey(dayFromKey(key) + n * DAY_MS);
+}
+
+/** Monday of the week containing `key`. */
+export function weekStart(key) {
+  const t = dayFromKey(key);
+  const dow = (new Date(t).getDay() + 6) % 7;   // 0 = Monday
+  return dayKey(t - dow * DAY_MS);
+}
+
+export function monthKey(key) { return String(key).slice(0, 7); }
+export function yearKey(key) { return String(key).slice(0, 4); }
+
+export function daysBetween(a, b) {
+  return Math.round((dayFromKey(b) - dayFromKey(a)) / DAY_MS);
+}
+
+/* ── per-day totals ────────────────────────────────────────────── */
+
+/** Map of 'YYYY-MM-DD' -> { day, reps, sets, flagged, clean, minutes, best, manual }. */
+export function byDay(sets) {
+  const map = new Map();
+  for (const s of sets || []) {
+    const day = s.day || dayKey(s.startedAt || Date.now());
+    let d = map.get(day);
+    if (!d) {
+      d = { day, reps: 0, sets: 0, flagged: 0, clean: 0, minutes: 0, best: 0, manual: 0, detected: 0 };
+      map.set(day, d);
+    }
+    const reps = Number(s.repsFinal) || 0;
+    d.reps += reps;
+    d.detected += Number(s.repsDetected) || 0;
+    d.sets += 1;
+    d.minutes += (Number(s.durationMs) || 0) / 60000;
+    d.best = Math.max(d.best, reps);
+    if (s.source === 'manual' || s.mode === 'manual') d.manual += 1;
+    const f = s.flags || {};
+    const flagged = (f.sag || 0) + (f.pike || 0) + (f.half || 0) + (f.lockout || 0) + (f.lost || 0);
+    d.flagged += flagged;
+    d.clean += Math.max(0, reps - flagged);
+  }
+  return map;
+}
+
+export function dayTotals(sets, key) {
+  return byDay(sets).get(key) || emptyDay(key);
+}
+
+function emptyDay(key) {
+  return { day: key, reps: 0, sets: 0, flagged: 0, clean: 0, minutes: 0, best: 0, manual: 0, detected: 0 };
+}
+
+/** Contiguous run of days with reps > 0, counting back from `fromKey` (or from the last training day). */
+export function trainingStreak(days, fromKey) {
+  const has = (k) => { const d = days.get(k); return !!d && d.reps > 0; };
+  let cursor = fromKey || dayKey(Date.now());
+  if (!has(cursor)) cursor = addDays(cursor, -1);      // today not done yet does not kill yesterday's streak
+  let n = 0;
+  while (n < 4000 && has(cursor)) { n += 1; cursor = addDays(cursor, -1); }
+  return n;
+}
+
+/**
+ * Streak of weeks where the weekly goal was met, counting back from the current week.
+ * The in-progress week only counts if it already reached the goal, so a fresh Monday
+ * never shows a streak of zero just because the week is young.
+ */
+export function weeklyGoalStreak(days, goalReps, fromKey) {
+  const start = weekStart(fromKey || dayKey(Date.now()));
+  const weeks = weekBuckets(days, 260);
+  const met = new Map(weeks.map((w) => [w.key, w.reps >= goalReps]));
+  let n = 0;
+  for (let i = 0; i < 260; i++) {
+    const done = met.get(weekStart(addDays(start, -7 * i)));
+    if (done) { n += 1; continue; }
+    if (i === 0) continue;          // this week is still young — it neither counts nor breaks
+    break;
+  }
+  return n;
+}
+
+/**
+ * Consecutive days meeting the daily goal, walking back from today. A day with a rest pass
+ * spent on it counts as met, which is how `passes` (a set of day keys) keeps a streak alive.
+ */
+export function dailyGoalStreak(days, goalReps, fromKey, passes) {
+  const spent = passes instanceof Set ? passes : new Set(passes || []);
+  const met = (k) => {
+    const d = days.get(k);
+    return (d && d.reps >= goalReps) || spent.has(k);
+  };
+  let cursor = fromKey || dayKey(Date.now());
+  if (!met(cursor) && !spent.has(cursor)) cursor = addDays(cursor, -1);
+  let n = 0;
+  while (n < 4000 && (met(cursor) || spent.has(cursor))) { n += 1; cursor = addDays(cursor, -1); }
+  return n;
+}
+
+/* ── bucketed series ───────────────────────────────────────────── */
+
+function bucketize(days, count, keyOf, startOf, stepOf) {
+  const out = [];
+  const today = keyOf(Date.now());
+  const anchor = startOf(today);
+  for (let i = count - 1; i >= 0; i--) {
+    const key = stepOf(anchor, -i);
+    out.push({ key, from: key, to: key, reps: 0, sets: 0, minutes: 0, best: 0, days: 0, flagged: 0, clean: 0 });
+  }
+  const index = new Map(out.map((b, i) => [b.key, i]));
+  for (const d of days.values()) {
+    const k = index.get(keyOf(dayFromKey(d.day)));
+    if (k === undefined) continue;
+    const b = out[k];
+    b.reps += d.reps;
+    b.sets += d.sets;
+    b.minutes += d.minutes;
+    b.flagged += d.flagged;
+    b.clean += d.clean;
+    b.best = Math.max(b.best, d.best);
+    if (d.reps > 0) b.days += 1;
+  }
+  for (const b of out) {
+    b.minutes = Math.round(b.minutes);
+    b.avgPerSet = b.sets ? Math.round(b.reps / b.sets) : 0;
+  }
+  return out;
+}
+
+/** Last `count` days, oldest first, including today. */
+export function dayBuckets(days, count = 90) {
+  return bucketize(days, count, (t) => dayKey(t), (todayKey) => todayKey, (k, n) => addDays(k, n));
+}
+
+/** Last `count` weeks keyed by their Monday, oldest first. */
+export function weekBuckets(days, count = 52) {
+  const out = bucketize(days, count, (t) => weekStart(dayKey(t)), (todayKey) => weekStart(todayKey), (k, n) => addDays(k, n * 7));
+  for (const b of out) { b.to = addDays(b.key, 6); b.label = shortRange(b.key, b.to); }
+  return out;
+}
+
+/** Last `count` calendar months, keyed 'YYYY-MM'. */
+export function monthBuckets(days, count = 24) {
+  const keyOf = (t) => monthKey(dayKey(t));
+  const startOf = (todayKey) => monthKey(todayKey);
+  const stepOf = (k, n) => {
+    const [y, m] = k.split('-').map(Number);
+    const d = new Date(y, m - 1 + n, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  };
+  const out = bucketize(days, count, keyOf, startOf, stepOf);
+  for (const b of out) b.label = monthName(b.key);
+  return out;
+}
+
+/** Last `count` calendar years, keyed 'YYYY'. */
+export function yearBuckets(days, count = 6) {
+  const keyOf = (t) => yearKey(dayKey(t));
+  const out = bucketize(days, count, keyOf, (todayKey) => yearKey(todayKey), (k, n) => String(Number(k) + n));
+  for (const b of out) b.label = b.key;
+  return out;
+}
+
+function monthName(key) {
+  const [y, m] = key.split('-').map(Number);
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return names[(m || 1) - 1] + (m === 1 ? ' ' + y : '');
+}
+
+function shortRange(a, b) {
+  const pa = a.split('-'), pb = b.split('-');
+  return Number(pa[1]) + '/' + Number(pa[2]) + '–' + Number(pb[1]) + '/' + Number(pb[2]);
+}
+
+/* ── sets-level series ─────────────────────────────────────────── */
+
+/** Best single set per week — the number the 100-in-a-row plan actually tracks. */
+export function bestSetPerWeek(sets, count = 52) {
+  const weeks = weekBuckets(byDay(sets), count);
+  for (const w of weeks) w.best = 0;
+  const index = new Map(weeks.map((w, i) => [w.key, i]));
+  for (const s of sets || []) {
+    const k = index.get(weekStart(s.day || dayKey(s.startedAt)));
+    if (k === undefined) continue;
+    weeks[k].best = Math.max(weeks[k].best, Number(s.repsFinal) || 0);
+  }
+  return weeks;
+}
+
+/** Reps by hour of day, four buckets, as shares of total volume. */
+export function timeOfDay(sets) {
+  const buckets = [
+    { key: 'night', label: '00–05', reps: 0, sets: 0 },
+    { key: 'morning', label: '05–12', reps: 0, sets: 0 },
+    { key: 'afternoon', label: '12–17', reps: 0, sets: 0 },
+    { key: 'evening', label: '17–24', reps: 0, sets: 0 },
+  ];
+  for (const s of sets || []) {
+    const h = new Date(s.startedAt || 0).getHours();
+    const i = h < 5 ? 0 : h < 12 ? 1 : h < 17 ? 2 : 3;
+    buckets[i].reps += Number(s.repsFinal) || 0;
+    buckets[i].sets += 1;
+  }
+  const total = sum(buckets.map((b) => b.reps));
+  for (const b of buckets) b.pct = total ? b.reps / total : 0;
+  return buckets;
+}
+
+/* ── records ───────────────────────────────────────────────────── */
+
+export function records(sets) {
+  const list = (sets || []).filter((s) => (Number(s.repsFinal) || 0) > 0);
+  const out = {
+    bestSet: null, longestSet: null, bestDay: null, bestWeek: null, bestMonth: null, bestYear: null,
+    lifetimeReps: 0, lifetimeSets: list.length, lifetimeMinutes: 0,
+  };
+  for (const s of list) {
+    const reps = Number(s.repsFinal) || 0;
+    if (!out.bestSet || reps > out.bestSet.reps) out.bestSet = { reps, at: s.startedAt, id: s.id, day: s.day };
+    const dur = Number(s.durationMs) || 0;
+    if (!out.longestSet || dur > out.longestSet.durationMs) out.longestSet = { durationMs: dur, reps, at: s.startedAt, id: s.id, day: s.day };
+    out.lifetimeReps += reps;
+    out.lifetimeMinutes += dur / 60000;
+  }
+  out.lifetimeMinutes = Math.round(out.lifetimeMinutes);
+  const days = byDay(list);
+  for (const d of days.values()) if (!out.bestDay || d.reps > out.bestDay.reps) out.bestDay = { day: d.day, reps: d.reps };
+  const pick = (buckets) => {
+    let best = null;
+    for (const b of buckets) if (b.reps > 0 && (!best || b.reps > best.reps)) best = { key: b.key, reps: b.reps };
+    return best;
+  };
+  out.bestWeek = pick(weekBuckets(days, 400));
+  out.bestMonth = pick(monthBuckets(days, 120));
+  out.bestYear = pick(yearBuckets(days, 40));
+  return out;
+}
+
+/* ── estimates ─────────────────────────────────────────────────── */
+
+/**
+ * Estimated one-set max. A single all-out set is limited by the threshold you were counting
+ * against, not by failure, so the best recent set is a floor rather than the answer. We take the
+ * best set in the last `windowDays` and add a documented allowance: +12% of the set, never more
+ * than +10 reps, and nothing added when the best set is older than the window.
+ */
+export function estimatedMax(sets, windowDays = 28, todayKey) {
+  const from = addDays(todayKey || dayKey(Date.now()), -windowDays);
+  let best = 0, bestAt = 0;
+  for (const s of sets || []) {
+    const day = s.day || dayKey(s.startedAt);
+    if (day < from || day > (todayKey || dayKey(Date.now()))) continue;
+    const reps = Number(s.repsFinal) || 0;
+    if (reps > best) { best = reps; bestAt = s.startedAt || 0; }
+  }
+  if (!best) return { est: 0, basis: 0, windowDays, at: bestAt };
+  return { est: best + Math.min(10, Math.round(best * 0.12)), basis: best, windowDays, at: bestAt };
+}
+
+/** Least-squares fit of weekly best-set values; projects the date a target is likely reached. */
+export function projectTarget(sets, target, weeks = 12) {
+  const series = bestSetPerWeek(sets, weeks).filter((w) => w.best > 0);
+  if (series.length < 4) return { slope: 0, weeksTo: null, date: null, enough: false, points: series.length };
+  const n = series.length;
+  const xs = series.map((_, i) => i);
+  const ys = series.map((w) => w.best);
+  const mx = mean(xs), my = mean(ys);
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+  const slope = den ? num / den : 0;
+  const intercept = my - slope * mx;
+  const now = ys[n - 1];
+  if (now >= target) return { slope, weeksTo: 0, date: dayKey(Date.now()), enough: true, points: n, current: now };
+  if (slope <= 0.05) return { slope, weeksTo: null, date: null, enough: true, current: now, points: n };
+  const weeksTo = Math.ceil((target - intercept) / slope - (n - 1));
+  if (weeksTo < 1 || weeksTo > 260) return { slope, weeksTo: null, date: null, enough: true, current: now, points: n };
+  return { slope, weeksTo, date: addDays(weekStart(dayKey(Date.now())), weeksTo * 7), enough: true, current: now, points: n };
+}
+
+/* ── form quality over time ────────────────────────────────────── */
+
+/**
+ * Tempo and depth consistency from the per-rep rows of one set: coefficient of variation of rep
+ * duration (tempo) and of minimum elbow angle (depth). Lower cv = more consistent. Returns nulls
+ * when the set has fewer than three reps, because a cv of two numbers is not a signal.
+ */
+export function setConsistency(reps) {
+  const list = (reps || []).filter((r) => r && Number.isFinite(r.durationMs));
+  if (list.length < 3) return { reps: list.length, tempoCv: null, depthCv: null, medianMs: null, minElbow: null };
+  const durs = list.map((r) => r.durationMs);
+  const angles = list.map((r) => r.minElbow).filter((v) => Number.isFinite(v));
+  const cv = (arr) => {
+    const m = mean(arr);
+    if (!m) return null;
+    const sd = Math.sqrt(mean(arr.map((v) => (v - m) ** 2)));
+    return sd / m;
+  };
+  const sorted = durs.slice().sort((a, b) => a - b);
+  return {
+    reps: list.length,
+    tempoCv: cv(durs),
+    depthCv: angles.length >= 3 ? cv(angles) : null,
+    medianMs: sorted[Math.floor(sorted.length / 2)],
+    minElbow: angles.length ? Math.min(...angles) : null,
+  };
+}
+
+/**
+ * Aggregate consistency across the most recent `count` sets, returned oldest→newest for charting.
+ * Sorted defensively: listSets() hands back newest-first, and slice(-count) on that array would
+ * otherwise read the oldest sets in the database.
+ */
+export function consistencySeries(sets, repsBySet, count = 30) {
+  const ordered = (sets || []).slice().sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+  const out = [];
+  for (const s of ordered.slice(-count)) {
+    const c = setConsistency(repsBySet[s.id] || []);
+    if (c.tempoCv === null && c.depthCv === null) continue;
+    out.push({ id: s.id, day: s.day, at: s.startedAt, reps: c.reps, tempoCv: c.tempoCv, depthCv: c.depthCv, medianMs: c.medianMs });
+  }
+  return out;
+}
+
+/** Flag mix across a window, for the "what is the camera catching" row. */
+export function flagMix(sets, windowDays = 30, todayKey) {
+  const from = addDays(todayKey || dayKey(Date.now()), -windowDays);
+  const t = { sag: 0, pike: 0, half: 0, lockout: 0, lost: 0, reps: 0, sets: 0 };
+  for (const s of sets || []) {
+    const day = s.day || dayKey(s.startedAt);
+    if (day < from) continue;
+    const f = s.flags || {};
+    t.sets += 1;
+    t.reps += Number(s.repsFinal) || 0;
+    for (const k of ['sag', 'pike', 'half', 'lockout', 'lost']) t[k] += Number(f[k]) || 0;
+  }
+  return t;
+}
+
+/* ── heatmap ───────────────────────────────────────────────────── */
+
+/**
+ * Calendar heatmap cells for the last `weeks` weeks, column-major; index 0..6 inside a column is
+ * Monday..Sunday. `level` is 0 none, 1 some, 2 half the goal, 3 goal met, 4 fifty over.
+ */
+export function heatmap(days, weeks = 26, goal = 50, endKey) {
+  const end = endKey || dayKey(Date.now());
+  const endMonday = weekStart(end);
+  const cols = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    const monday = addDays(endMonday, -7 * i);
+    const col = [];
+    for (let d = 0; d < 7; d++) {
+      const key = addDays(monday, d);
+      const rec = days.get(key);
+      const reps = rec ? rec.reps : 0;
+      col.push({
+        day: key, reps, sets: rec ? rec.sets : 0,
+        level: reps === 0 || goal <= 0 ? (reps > 0 ? 1 : 0)
+          : reps >= goal * 1.5 ? 4 : reps >= goal ? 3 : reps >= goal * 0.5 ? 2 : 1,
+        future: key > end,
+      });
+    }
+    cols.push({ week: monday, cells: col });
+  }
+  return cols;
+}
+
+/** Missing days with at least one set on either side — what "add a missed day" offers. */
+export function gaps(days, windowDays = 90) {
+  const keys = [...days.keys()].filter((k) => days.get(k).reps > 0).sort();
+  if (keys.length < 2) return [];
+  const out = [];
+  const from = addDays(keys[keys.length - 1], -windowDays);
+  for (let i = 1; i < keys.length; i++) {
+    for (let d = 1; d < daysBetween(keys[i - 1], keys[i]); d++) {
+      const key = addDays(keys[i - 1], d);
+      if (key >= from) out.push(key);
+    }
+  }
+  return out.slice(-31);
+}
+
+/** Everything the Today screen needs, in one pass over the sets. */
+export function summarize(sets, opts = {}) {
+  const goal = opts.dailyGoal || 0;
+  const days = byDay(sets);
+  const todayKey = opts.todayKey || dayKey(Date.now());
+  const rec = days.get(todayKey) || emptyDay(todayKey);
+  return {
+    todayKey,
+    today: rec,
+    goal,
+    goalPct: goal ? Math.min(1, rec.reps / goal) : 0,
+    goalLeft: Math.max(0, goal - rec.reps),
+    week: weekBuckets(days, 1).pop() || emptyDay(todayKey),
+    month: monthBuckets(days, 1).pop() || emptyDay(todayKey),
+    year: yearBuckets(days, 1).pop() || emptyDay(todayKey),
+    lifetime: records(sets).lifetimeReps,
+    streak: trainingStreak(days, todayKey),
+    days30: dayBuckets(days, 30),
+    setsToday: rec.sets,
+  };
+}
+__EOF_js_stats_js__
+
+mkdir -p 'js'
 cat > 'js/upgrade.js' <<'__EOF_js_upgrade_js__'
 const POLL_MS = 5 * 60 * 1000;
 
@@ -2991,21 +3888,933 @@ __EOF_js_views_debug_js__
 
 mkdir -p 'js/views'
 cat > 'js/views/progress.js' <<'__EOF_js_views_progress_js__'
-import { countSets } from '../db.js';
+/* Progress: the calendar heatmap is the one big thing; everything below it is a smaller read.
+   All numbers come from stats.js / goals.js over a single listSets() read, so this screen and the
+   Today screen cannot disagree. Charts are hand-rolled divs and inline SVG — no library, no build.
+   Sets are sorted oldest-first once here, because stats.consistencySeries slices the tail. */
 
-export default async function progressView(host) {
-  let n = 0;
-  try { n = await countSets(); } catch {}
-  host.innerHTML = `
-    <div class="pad">
-      <h2 class="h1" style="margin:18px 0 6px">Progress</h2>
-      <p class="sub">${n} set${n === 1 ? '' : 's'} recorded on this phone. Charts, heatmap, records and goals land in phase 2 —
-      every set saved from now on is stored with the fields they will read, so nothing gets lost by installing this version first.</p>
-      <div class="rule"></div>
-      <p class="sub">Phase 2 adds: calendar heatmap, reps per day/week/month/year, best set over time,
-      weekly volume, estimated max, time-of-day, tempo and depth consistency, daily/weekly/yearly goals and streaks.</p>
-    </div>`;
-  return {};
+import { deleteSet, listReps, listSets, listSetsForDay, saveSet, updateSet } from '../db.js';
+import { loadGoals } from '../goals.js';
+import {
+  bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayFromKey, estimatedMax,
+  flagMix, heatmap, monthBuckets, projectTarget, records, timeOfDay, weekBuckets, yearBuckets,
+} from '../stats.js';
+import { clamp, clear, fmtClock, fmtDay, h, mean, pct, sum, today } from '../util.js';
+
+const NS = 'http://www.w3.org/2000/svg';
+const HEAT_WEEKS = 26;      // half a year of columns — as much grid as a phone can hold
+const REP_CAP = 30;         // per-rep fan-out: never read rep rows for more sets than this
+const TARGET_KEY = 'pushups.target';
+const DEFAULT_TARGET = 100;
+const MAX_WINDOW = 28;      // estimatedMax look-back, days
+
+const RANGES = {
+  day: { label: 'Day', window: 'last 30 days', make: (d) => dayBuckets(d, 30) },
+  week: { label: 'Week', window: 'last 26 weeks', make: (d) => weekBuckets(d, 26) },
+  month: { label: 'Month', window: 'last 12 months', make: (d) => monthBuckets(d, 12) },
+  year: { label: 'Year', window: 'last 5 years', make: (d) => yearBuckets(d, 5) },
+};
+const RANGE_ORDER = ['day', 'week', 'month', 'year'];
+const DAY_GRAIN = ['month', 'year'];   // these buckets count days, not sets
+
+const VOL_SERIES = {
+  volume: { label: 'weekly volume', pick: (b) => b.reps, unit: 'reps this week' },
+  avg: { label: 'reps per set', pick: (b) => b.avgPerSet, unit: 'per set this week' },
+};
+
+const FLAG_LABEL = {
+  sag: 'hips sagging', pike: 'hips piking', half: 'shallow reps',
+  lockout: 'no lockout', lost: 'tracking lost',
+};
+const FLAG_HARD = ['sag', 'pike', 'half', 'lost'];
+const TOD_TONE = ['lv1', 'lv2', 'lv3', 'lv4'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const SKELETON = `
+  <div class="list">
+    <div class="pg-top pad">
+      <h2 class="h1">Progress</h2>
+      <p class="pg-sum" id="pgSum"></p>
+      <p class="pg-error" id="pgNote"></p>
+    </div>
+    <div class="pg-heatsec">
+      <div class="pg-cap pad" id="pgHeatCap"></div>
+      <div class="pad" id="pgHeat"></div>
+      <div class="pg-capend pad" id="pgHeatLegend"></div>
+    </div>
+    <div class="pg-sec">
+      <div class="pad" id="pgRangeHead"></div>
+      <div class="pg-seg pad" id="pgRange"></div>
+      <div class="pg-cap pad" id="pgChartCap"></div>
+      <div id="pgChart"></div>
+    </div>
+    <div class="pg-box pad" id="pgBest"></div>
+    <div class="pg-box pad" id="pgVol"></div>
+    <div class="pg-sec">
+      <div class="pad" id="pgMax"></div>
+      <div class="rule" style="margin:10px 16px 6px"></div>
+      <div class="pad" id="pgTarget"></div>
+    </div>
+    <div class="pg-box pad" id="pgConsist"></div>
+    <div class="pg-sec">
+      <div class="pad" id="pgRecHead"></div>
+      <div class="pad" id="pgRecords"></div>
+      <div id="pgFlags" class="pad"></div>
+    </div>
+    <div class="pg-box pad" id="pgTod"></div>
+    <div class="pg-foot pad" id="pgFoot"></div>
+    <div style="height:14px"></div>
+  </div>`;
+
+/* ── small builders ────────────────────────────────────────────── */
+
+function svg(tag, attrs) {
+  const el = document.createElementNS(NS, tag);
+  for (const k of Object.keys(attrs || {})) {
+    const v = attrs[k];
+    if (v === null || v === undefined || v === false) continue;
+    el.setAttribute(k, String(v));
+  }
+  return el;
+}
+
+/** CSS custom properties need setProperty — Object.assign onto style would be ignored. */
+function vars(el, map) {
+  for (const k of Object.keys(map || {})) el.style.setProperty(k, String(map[k]));
+  return el;
+}
+
+function errText(e) {
+  return e && e.message ? e.message : String(e);
+}
+
+function fmtDur(ms) {
+  const t = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+}
+
+/** 'YYYY-MM-DD' at local midday, so a backfilled set sorts inside its own day. */
+function noonOf(dayKeyStr) {
+  const d = new Date(dayFromKey(dayKeyStr));
+  d.setHours(12, 0, 0, 0);
+  return d.getTime();
+}
+
+function parseReps(raw) {
+  const n = parseInt(String(raw).trim(), 10);
+  return Number.isFinite(n) ? clamp(n, 0, 999) : null;
+}
+
+function repsOf(s) {
+  return Number(s && s.repsFinal) || 0;
+}
+
+function detectedOf(s) {
+  return Number(s && s.repsDetected) || 0;
+}
+
+function flagCount(s) {
+  const f = (s && s.flags) || {};
+  return (Number(f.sag) || 0) + (Number(f.pike) || 0) + (Number(f.half) || 0)
+    + (Number(f.lockout) || 0) + (Number(f.lost) || 0);
+}
+
+function sourceLabel(s) {
+  if (s.source === 'manual' || s.mode === 'manual') return 'manual';
+  return s.cameraUsed === 'user' ? 'front cam' : 'side cam';
+}
+
+/** Tick text per grain: day number, week start as m/d, three-letter month, four-digit year. */
+function bucketLabel(bucket, grain) {
+  if (grain === 'day') return String(Number(bucket.key.slice(8, 10)));
+  if (grain === 'week') return Number(bucket.key.slice(5, 7)) + '/' + Number(bucket.key.slice(8, 10));
+  if (grain === 'month') return MONTH_NAMES[(Number(bucket.key.slice(5, 7)) || 1) - 1];
+  return bucket.label || bucket.key;
+}
+
+function monthText(mk) {
+  return MONTH_NAMES[(Number(mk.slice(5, 7)) || 1) - 1] + ' ' + String(mk).slice(0, 4);
+}
+
+/** 'Fri 9 Oct', but with the year when the date is not in the current one. */
+function fmtDayYear(dayKeyStr, nowKey) {
+  const text = fmtDay(dayKeyStr);
+  return String(dayKeyStr).slice(0, 4) === String(nowKey).slice(0, 4) ? text : text + ' ' + String(dayKeyStr).slice(0, 4);
+}
+
+function peakCaption(bucket, grain) {
+  const reps = bucket.reps;
+  if (grain === 'day') return 'peak ' + reps + ' on ' + fmtDay(bucket.key);
+  if (grain === 'week') return 'peak ' + reps + ' in the week of ' + fmtDay(bucket.key);
+  if (grain === 'month') return 'peak ' + reps + ' in ' + monthText(bucket.key);
+  return 'peak ' + reps + ' in ' + bucket.key;
+}
+
+function headBlock(title, sub) {
+  const row = h('div', { class: 'pg-headrow' }, h('div', { class: 'pg-headtitle' }, title));
+  if (sub) row.append(h('div', { class: 'pg-headsub' }, sub));
+  return row;
+}
+
+function caption(text, cls) {
+  return h('p', { class: 'sub pg-caption' + (cls ? ' ' + cls : '') }, text);
+}
+
+/* ── hand-rolled charts ────────────────────────────────────────── */
+
+/**
+ * Line or step chart in a 100-wide viewBox stretched to the container. non-scaling-stroke keeps the
+ * line the same weight whatever the x/y stretch factors do, so nothing here needs measuring.
+ */
+function spark(vals, opts = {}) {
+  const clean = (vals || []).map((v) => (Number.isFinite(v) ? v : 0));
+  const n = clean.length;
+  const height = Number(opts.height) || 56;
+  const pad = 3;
+  const el = svg('svg', {
+    class: 'pg-spark' + (opts.tone ? ' ' + opts.tone : ''),
+    viewBox: '0 0 100 ' + height, preserveAspectRatio: 'none',
+    'aria-hidden': 'true', focusable: 'false',
+  });
+  el.style.setProperty('height', height + 'px');
+  if (!n) return el;
+  const top = Math.max(...clean) || 1;
+  const x = (i) => (n === 1 ? 50 : (i * 100) / (n - 1));
+  const y = (v) => height - pad - clamp(v / top, 0, 1) * (height - pad * 2);
+  const parts = [];
+  if (opts.step) {
+    parts.push('M' + x(0).toFixed(2) + ' ' + y(clean[0]).toFixed(2));
+    for (let i = 1; i < n; i++) {
+      parts.push('H' + x(i).toFixed(2));
+      parts.push('V' + y(clean[i]).toFixed(2));
+    }
+  } else {
+    clean.forEach((v, i) => parts.push((i ? 'L' : 'M') + x(i).toFixed(2) + ' ' + y(v).toFixed(2)));
+  }
+  el.append(svg('path', { class: 'pg-base', d: 'M0 ' + (height - 0.6).toFixed(2) + ' H100' }));
+  el.append(svg('path', {
+    class: 'pg-area',
+    d: parts.join(' ') + ' H' + x(n - 1).toFixed(2) + ' V' + height + ' H' + x(0).toFixed(2) + ' Z',
+  }));
+  el.append(svg('path', { class: 'pg-line', d: parts.join(' ') }));
+  if (opts.dot !== false) {
+    el.append(svg('circle', { class: 'pg-dot', cx: x(n - 1).toFixed(2), cy: y(clean[n - 1]).toFixed(2), r: '2.2' }));
+  }
+  return el;
+}
+
+/** Axis row with one slot per bucket so labels line up with their bars. */
+function axisRow(buckets, grain) {
+  const n = buckets.length;
+  const every = n > 13 ? Math.ceil(n / 5) : n > 8 ? 2 : 1;
+  const row = h('div', { class: 'pg-axis' });
+  buckets.forEach((b, i) => {
+    const show = every === 1 ? true : (i % every === 1 && i < n - 1);
+    row.append(h('div', { class: 'pg-aslot' }, show ? h('span', { class: 'pg-atext' }, bucketLabel(b, grain)) : null));
+  });
+  return row;
+}
+
+/** Reps as bars; sets (or training days) as a quiet tick at the baseline. */
+function barChart(buckets, opts) {
+  const grain = opts.grain;
+  const secOf = (b) => (DAY_GRAIN.indexOf(grain) >= 0 ? b.days : b.sets);
+  const maxReps = Math.max(0, ...buckets.map((b) => b.reps));
+  const maxSec = Math.max(0, ...buckets.map(secOf));
+  const wrap = h('div', { class: 'pg-barchart' });
+  if (!maxReps) {
+    // a 112px void next to a caption that already says nothing happened is just a hole in the page
+    wrap.append(h('div', { class: 'pg-plotempty' }, 'nothing logged in this window yet'));
+    return wrap;
+  }
+  const plot = h('div', { class: 'pg-plot' });
+  if (opts.goal > 0 && maxReps > 0 && opts.goal <= maxReps) {
+    // 5px of the slot is the tick and its gap, so the goal line is measured against the bar area only
+    const frac = clamp(opts.goal / maxReps, 0, 1).toFixed(4);
+    const line = h('div', { class: 'pg-goalline' }, h('span', { class: 'pg-goaltag' }, 'goal ' + opts.goal));
+    line.style.setProperty('bottom', 'calc((100% - 5px) * ' + frac + ' + 5px)');
+    plot.append(line);
+  }
+  buckets.forEach((b) => {
+    const sec = secOf(b);
+    const bar = h('i', { class: 'pg-bar' + (maxReps > 0 && b.reps === maxReps ? ' hi' : ''), 'aria-hidden': 'true' });
+    bar.style.setProperty('height', (maxReps > 0 ? clamp(b.reps / maxReps, 0, 1) * 100 : 0) + '%');
+    const tick = h('i', { class: 'pg-tick', 'aria-hidden': 'true' });
+    tick.style.setProperty('opacity', sec > 0 && maxSec > 0 ? (0.3 + 0.7 * (sec / maxSec)).toFixed(2) : '0');
+    plot.append(h('div', { class: 'pg-slot' }, h('div', { class: 'pg-bint' }, bar), tick));
+  });
+  wrap.append(plot, axisRow(buckets, grain));
+  return wrap;
+}
+
+/* ── the view ──────────────────────────────────────────────────── */
+
+export default async function progressView(host, ctx) {
+  const key = today();
+  const rerender = () => (ctx && typeof ctx.render === 'function' ? ctx.render() : null);
+  let scrim = null;
+  let dirty = false;
+  let resizeTimer = 0;
+
+  host.innerHTML = SKELETON;
+  const q = (sel) => host.querySelector(sel);
+  const els = {
+    sum: q('#pgSum'), note: q('#pgNote'),
+    heatCap: q('#pgHeatCap'), heat: q('#pgHeat'), heatLegend: q('#pgHeatLegend'),
+    rangeHead: q('#pgRangeHead'), range: q('#pgRange'), chartCap: q('#pgChartCap'), chart: q('#pgChart'),
+    best: q('#pgBest'), vol: q('#pgVol'), max: q('#pgMax'), target: q('#pgTarget'),
+    consist: q('#pgConsist'), recHead: q('#pgRecHead'), records: q('#pgRecords'), flags: q('#pgFlags'),
+    tod: q('#pgTod'), foot: q('#pgFoot'),
+  };
+
+  // ── one read, guarded ─────────────────────────────────────────
+  let sets = [];
+  let dbError = '';
+  try {
+    const rows = await listSets();
+    sets = Array.isArray(rows) ? rows.slice().sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)) : [];
+  } catch (e) {
+    dbError = errText(e);
+  }
+  if (dbError) {
+    host.replaceChildren(h('div', { class: 'list' },
+      h('div', { class: 'pg-top pad' },
+        h('h2', { class: 'h1' }, 'Progress'),
+        h('p', { class: 'pg-error' },
+          'could not read your saved sets: ' + dbError + '. Nothing on this screen can be drawn until the database opens again.'))));
+    return {};
+  }
+
+  let goals = null;
+  try {
+    goals = await loadGoals();
+  } catch (e) {
+    els.note.textContent = 'goals could not be read: ' + errText(e);
+  }
+  const dailyGoal = goals && Number(goals.daily) > 0 ? Number(goals.daily) : 0;
+
+  let days = byDay([]);
+  let rec = records([]);
+  try {
+    days = byDay(sets);
+    rec = records(sets);
+  } catch (e) {
+    els.note.textContent = 'aggregation failed: ' + errText(e);
+  }
+
+  els.sum.textContent = sets.length
+    ? sets.length + ' sets · ' + rec.lifetimeReps + ' reps · ' + days.size + ' days logged'
+    : 'nothing logged yet';
+
+  let range = 'week';
+  let volKey = 'volume';
+  let target = readTarget();
+
+  paintHeat();
+  paintRange();
+  paintBest();
+  paintVol();
+  paintMax();
+  paintTarget();
+  paintRecords();
+  paintTod();
+  paintFoot();
+  paintConsistency();          // async on its own: needs per-rep rows
+
+  window.addEventListener('resize', onResize);
+
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(paintHeat, 200);
+  }
+
+  // ── calendar heatmap: the hero ────────────────────────────────
+
+  function paintHeat() {
+    let cols = [];
+    try {
+      cols = heatmap(days, HEAT_WEEKS, dailyGoal, key);
+    } catch (e) {
+      els.note.textContent = 'heatmap failed: ' + errText(e);
+    }
+    clear(els.heat);
+    clear(els.heatCap);
+    clear(els.heatLegend);
+
+    const first = cols.length ? cols[0].cells[0].day : key;
+    els.heatCap.append(h('span', { class: 'pg-captxt' }, HEAT_WEEKS + ' weeks'),
+      h('span', { class: 'pg-capdim' }, ' · ' + fmtDay(first) + ' to ' + fmtDay(key) + ' · rows Mon–Sun'));
+    if (!sets.length) els.heatCap.append(h('span', { class: 'pg-capdim' }, ' · nothing here yet'));
+
+    const avail = Math.max(200, (els.heat.clientWidth || 320) - 32);   // .pad is 16px each side
+    const gap = avail < 340 ? 1 : 2;
+    const cell = clamp(Math.floor((avail - gap * (HEAT_WEEKS - 1)) / HEAT_WEEKS), 5, 15);
+    const row = vars(h('div', { class: 'pg-heatrow' }), { '--pg-cell': cell + 'px', '--pg-gap': gap + 'px' });
+    for (const col of cols) {
+      const isNow = col.cells.some((c) => c.day === key);
+      const colEl = h('div', { class: 'pg-hcol' + (isNow ? ' now' : '') });
+      for (const c of col.cells) {
+        colEl.append(h('button', {
+          class: 'pg-hcell' + (c.day === key ? ' today' : ''),
+          type: 'button',
+          disabled: c.future ? true : null,
+          'aria-label': fmtDay(c.day) + ': ' + c.reps + ' reps in ' + c.sets + ' sets',
+          onclick: c.future ? null : () => openDaySheet(c.day),
+        }, h('span', { class: 'pg-hsq lv' + c.level })));
+      }
+      row.append(colEl);
+    }
+    els.heat.append(row);
+
+    const legend = h('div', { class: 'pg-legend' }, h('span', { class: 'pg-capdim' }, 'less'));
+    for (let lv = 0; lv <= 4; lv++) legend.append(h('span', { class: 'pg-hsq lv' + lv }));
+    legend.append(h('span', { class: 'pg-capdim' }, 'more'),
+      h('span', { class: 'pg-capdim' }, dailyGoal ? ' · full at ' + dailyGoal : ' · no goal set'));
+    els.heatLegend.append(legend);
+  }
+
+  // ── range switcher + bar chart ────────────────────────────────
+
+  function paintRange() {
+    clear(els.rangeHead);
+    clear(els.range);
+    els.rangeHead.append(headBlock('Reps over time', 'bars are reps · the tick under each is sets'));
+    RANGE_ORDER.forEach((name) => {
+      const on = name === range;
+      els.range.append(h('button', {
+        class: 'pg-segb' + (on ? ' on' : ''),
+        type: 'button',
+        'aria-pressed': on ? 'true' : 'false',
+        onclick: () => { if (!on) { range = name; paintRange(); } },
+      }, RANGES[name].label));
+    });
+    paintChart();
+  }
+
+  function paintChart() {
+    const spec = RANGES[range];
+    clear(els.chartCap);
+    clear(els.chart);
+    let buckets = [];
+    try {
+      buckets = spec.make(days);
+    } catch (e) {
+      els.chartCap.append(h('span', { class: 'pg-error' }, 'chart failed: ' + errText(e)));
+      return;
+    }
+    const total = sum(buckets.map((b) => b.reps));
+    let peak = null;
+    for (const b of buckets) if (!peak || b.reps > peak.reps) peak = b;
+    els.chartCap.append(h('span', { class: 'pg-captxt' }, spec.window));
+    els.chartCap.append(h('span', { class: 'pg-capdim' },
+      peak && peak.reps > 0 ? ' · ' + peakCaption(peak, range) + ' · ' + total + ' logged' : ' · nothing logged'));
+    els.chart.append(barChart(buckets, { grain: range, goal: range === 'day' ? dailyGoal : 0 }));
+  }
+
+  // ── best set over time ────────────────────────────────────────
+
+  function paintBest() {
+    clear(els.best);
+    els.best.append(headBlock('Best set over time',
+      'biggest single set in each of the last ' + HEAT_WEEKS + ' weeks'));
+    let weeks = [];
+    try {
+      weeks = bestSetPerWeek(sets, HEAT_WEEKS);
+    } catch (e) {
+      els.best.append(h('p', { class: 'pg-error' }, 'failed: ' + errText(e)));
+      return;
+    }
+    const live = weeks.filter((w) => w.best > 0);
+    if (!live.length) {
+      els.best.append(h('p', { class: 'sub' }, 'no sets yet — this line starts once you train.'));
+      return;
+    }
+    const current = Math.max(...live.map((w) => w.best));
+    const holder = weeks.filter((w) => w.best === current).pop();
+    els.best.append(h('div', { class: 'pg-numrow' },
+      h('div', { class: 'pg-num' }, String(current)),
+      h('div', { class: 'pg-numsub' }, 'reps in one set · best week started ' + fmtDay(holder.key))));
+    els.best.append(spark(weeks.map((w) => w.best), { step: true, tone: 'brass', height: 62 }));
+    els.best.append(h('div', { class: 'pg-axisline' },
+      h('span', { class: 'pg-capdim' }, 'week of ' + fmtDay(weeks[0].key)),
+      h('span', { class: 'pg-capdim' }, 'this week')));
+  }
+
+  // ── weekly volume and average set size ────────────────────────
+
+  function paintVol() {
+    clear(els.vol);
+    els.vol.append(headBlock('Weekly load', 'last 16 weeks'));
+    const toggle = h('div', { class: 'pg-seg pg-segmini' });
+    Object.keys(VOL_SERIES).forEach((name) => {
+      const on = name === volKey;
+      toggle.append(h('button', {
+        class: 'pg-segb' + (on ? ' on' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false',
+        onclick: () => { if (!on) { volKey = name; paintVol(); } },
+      }, VOL_SERIES[name].label));
+    });
+    els.vol.append(toggle);
+    let buckets = [];
+    try {
+      buckets = weekBuckets(days, 16);
+    } catch (e) {
+      els.vol.append(h('p', { class: 'pg-error' }, 'failed: ' + errText(e)));
+      return;
+    }
+    const spec = VOL_SERIES[volKey];
+    const live = buckets.filter((b) => b.reps > 0);
+    if (!live.length) {
+      els.vol.append(h('p', { class: 'sub pg-caption' }, 'nothing logged in these weeks.'));
+      return;
+    }
+    els.vol.append(spark(buckets.map(spec.pick), { tone: 'track', height: 50 }));
+    const last = live[live.length - 1];
+    els.vol.append(h('div', { class: 'pg-axisline' },
+      h('span', { class: 'pg-capdim' }, spec.pick(last) + ' ' + spec.unit),
+      h('span', { class: 'pg-capdim' }, live.length + ' of ' + buckets.length + ' weeks trained')));
+  }
+
+  // ── estimated max ─────────────────────────────────────────────
+
+  function paintMax() {
+    clear(els.max);
+    els.max.append(headBlock('Estimated one-set max', 'an estimate, not a measurement'));
+    let est = { est: 0, basis: 0, at: 0 };
+    try {
+      est = estimatedMax(sets, MAX_WINDOW, key);
+    } catch (e) {
+      els.max.append(h('p', { class: 'pg-error' }, 'estimate failed: ' + errText(e)));
+      return;
+    }
+    if (!est.basis) {
+      els.max.append(h('p', { class: 'sub pg-caption' },
+        'no set logged in the last ' + MAX_WINDOW + ' days — train once and this appears.'));
+      return;
+    }
+    els.max.append(h('div', { class: 'pg-numrow' },
+      h('div', { class: 'pg-num' }, String(est.est)),
+      h('div', { class: 'pg-numsub' }, 'from your ' + est.basis + '-rep set on ' + fmtDay(est.at))));
+    els.max.append(caption('A set ends when you stop, not when you fail, so this is your best recent '
+      + 'set plus an allowance of ' + (est.est - est.basis) + ' reps. It is a floor with a guess on top.'));
+  }
+
+  // ── milestone projection ──────────────────────────────────────
+
+  function paintTarget() {
+    clear(els.target);
+    els.target.append(headBlock('Road to a target set',
+      'fitted over your last 12 weekly best sets'));
+    const inp = h('input', {
+      class: 'pg-tin', type: 'number', inputmode: 'numeric', min: '1', max: '999',
+      'aria-label': 'target reps in one set',
+    });
+    inp.value = String(target);
+    const err = h('span', { class: 'pg-err' });
+    const apply = () => {
+      const v = parseInt(inp.value, 10);
+      if (!Number.isFinite(v) || v < 1 || v > 999) { err.textContent = 'pick a number from 1 to 999'; return; }
+      err.textContent = '';
+      target = v;
+      writeTarget(v);
+      paintProjection();
+    };
+    inp.addEventListener('change', apply);
+    inp.addEventListener('blur', apply);
+    els.target.append(h('div', { class: 'pg-targetrow' },
+      h('span', { class: 'pg-capdim' }, 'target'), inp, h('span', { class: 'pg-capdim' }, 'reps in one set')), err);
+    els.target.append(h('div', { id: 'pgProj' }));
+    paintProjection();
+  }
+
+  function paintProjection() {
+    const slot = q('#pgProj');
+    if (!slot) return;
+    clear(slot);
+    let proj = { enough: false, weeksTo: null, date: null, slope: 0, points: 0 };
+    try {
+      proj = projectTarget(sets, target, 12);
+    } catch (e) {
+      slot.append(h('p', { class: 'pg-error' }, 'projection failed: ' + errText(e)));
+      return;
+    }
+    if (!proj.enough) {
+      slot.append(h('p', { class: 'pg-proj' }, 'log four weeks of sets first.'));
+      slot.append(caption(proj.points
+        ? 'Only ' + proj.points + ' week' + (proj.points === 1 ? '' : 's') + ' with a best set to fit a line to.'
+        : 'There is nothing to fit a line to yet.'));
+      return;
+    }
+    const nowLine = caption('Your best set now is ' + proj.current + ' reps.');
+    if (proj.weeksTo === 0) {
+      slot.append(h('p', { class: 'pg-proj done' }, 'already there — you have a ' + proj.current + '-rep set.'));
+      slot.append(nowLine);
+      return;
+    }
+    if (proj.weeksTo === null) {
+      slot.append(h('p', { class: 'pg-proj' }, proj.slope <= 0
+        ? 'your weekly best is flat or falling, so there is no date to give you.'
+        : 'the slope is too shallow to name a date without lying.'));
+      slot.append(nowLine);
+      return;
+    }
+    slot.append(h('p', { class: 'pg-proj' },
+      h('b', { class: 'num pg-projdate' }, fmtDayYear(proj.date, key)),
+      ' — about ' + proj.weeksTo + ' week' + (proj.weeksTo === 1 ? '' : 's') + ' at this slope.'));
+    slot.append(caption('The fit rises ' + proj.slope.toFixed(1) + ' reps a week over ' + proj.points
+      + ' weeks. It assumes you keep training; one new real best set moves it more than one bad week does.'));
+  }
+
+  // ── form consistency ──────────────────────────────────────────
+
+  async function paintConsistency() {
+    clear(els.consist);
+    els.consist.append(headBlock('Form consistency',
+      'how even your pace and depth were — lower is steadier'));
+    const recent = sets.slice(-REP_CAP);
+    if (!recent.length) {
+      els.consist.append(h('p', { class: 'sub' }, 'no sets yet.'));
+      return;
+    }
+    const repsBySet = {};
+    let lack = 0;
+    let readError = '';
+    for (const s of recent) {
+      try {
+        const rows = await listReps(s.id);
+        repsBySet[s.id] = Array.isArray(rows) ? rows : [];
+      } catch (e) {
+        repsBySet[s.id] = [];
+        readError = errText(e);
+      }
+      if ((repsBySet[s.id] || []).length < 3) lack += 1;
+    }
+    let series = [];
+    try {
+      series = consistencySeries(sets, repsBySet, REP_CAP);
+    } catch (e) {
+      els.consist.append(h('p', { class: 'pg-error' }, 'consistency failed: ' + errText(e)));
+      return;
+    }
+    if (!series.length) {
+      els.consist.append(h('p', { class: 'sub' },
+        'no per-rep data on the last ' + recent.length + ' sets — they were logged by hand or recorded '
+        + 'before the counter saved every rep.'));
+      return;
+    }
+    if (lack) {
+      els.consist.append(caption(lack + ' of the last ' + recent.length
+        + ' sets have no per-rep rows and are left out' + (readError ? ' (' + readError + ')' : '') + '.'));
+    }
+    const tempo = series.filter((p) => p.tempoCv !== null).map((p) => p.tempoCv);
+    const depth = series.filter((p) => p.depthCv !== null).map((p) => p.depthCv);
+    const grid = h('div', { class: 'pg-consgrid' });
+    grid.append(consistBlock('pace', tempo, 'spread of rep durations'));
+    grid.append(consistBlock('depth', depth, 'spread of how deep each rep went'));
+    els.consist.append(grid);
+    els.consist.append(caption(series.length + ' sets measured. The number is the coefficient of '
+      + 'variation: scatter around your own average, as a share of it. 15% means most reps landed within '
+      + 'about a sixth of your usual rhythm.'));
+  }
+
+  function consistBlock(title, vals, foot) {
+    const box = h('div', { class: 'pg-cons' });
+    box.append(h('div', { class: 'pg-conshead' },
+      h('span', { class: 'pg-conslbl' }, title),
+      h('span', { class: 'num pg-consval' }, vals.length >= 3 ? pct(mean(vals)) : '–')));
+    box.append(spark(vals, { tone: 'plum', height: 40, dot: false }));
+    box.append(h('div', { class: 'pg-consfoot' }, vals.length >= 3 ? foot : 'needs three reps with data'));
+    return box;
+  }
+
+  // ── records and flag mix ──────────────────────────────────────
+
+  function paintRecords() {
+    clear(els.recHead);
+    clear(els.records);
+    els.recHead.append(headBlock('Records', 'every set on this phone'));
+    const dayOfEntry = (e) => (e && (e.day || e.at) ? fmtDay(e.day || e.at) : '');
+    rows().forEach(([label, value, meta]) => {
+      els.records.append(h('div', { class: 'kv' },
+        h('span', { class: 'pg-key' }, label),
+        h('span', { class: 'pg-valwrap' },
+          h('b', { class: 'pg-val' }, value),
+          meta ? h('span', { class: 'pg-valmeta' }, meta) : null)));
+    });
+
+    function rows() {
+      const r = rec;
+      return [
+        ['best set', r.bestSet ? r.bestSet.reps + ' reps' : '–', dayOfEntry(r.bestSet)],
+        ['longest set', r.longestSet ? fmtDur(r.longestSet.durationMs) : '–',
+          r.longestSet ? r.longestSet.reps + ' reps · ' + dayOfEntry(r.longestSet) : ''],
+        ['best day', r.bestDay ? r.bestDay.reps + ' reps' : '–', r.bestDay ? fmtDay(r.bestDay.day) : ''],
+        ['best week', r.bestWeek ? r.bestWeek.reps + ' reps' : '–', r.bestWeek ? 'from ' + fmtDay(r.bestWeek.key) : ''],
+        ['best month', r.bestMonth ? r.bestMonth.reps + ' reps' : '–', r.bestMonth ? monthText(r.bestMonth.key) : ''],
+        ['best year', r.bestYear ? r.bestYear.reps + ' reps' : '–', r.bestYear ? String(r.bestYear.key) : ''],
+        ['lifetime', r.lifetimeReps + ' reps', r.lifetimeSets + ' sets · ' + r.lifetimeMinutes + ' min'],
+      ];
+    }
+
+    clear(els.flags);
+    let mix = null;
+    try {
+      mix = flagMix(sets, 30, key);
+    } catch (e) {
+      els.flags.append(h('p', { class: 'pg-error' }, 'flag mix failed: ' + errText(e)));
+      return;
+    }
+    els.flags.append(headBlock('What the camera is catching', 'last 30 days · ' + mix.sets + ' sets'));
+    if (!mix.sets) {
+      els.flags.append(h('p', { class: 'sub' }, 'no sets in the last 30 days.'));
+      return;
+    }
+    const keys = Object.keys(FLAG_LABEL).filter((k) => (Number(mix[k]) || 0) > 0);
+    const row = h('div', { class: 'flags' });
+    if (!keys.length) {
+      row.append(h('span', null, 'nothing flagged in ' + mix.reps + ' reps'));
+    } else {
+      keys.forEach((k) => row.append(h('span', {
+        class: FLAG_HARD.indexOf(k) >= 0 ? 'hard' : 'soft',
+      }, mix[k] + ' ' + FLAG_LABEL[k])));
+      const flagged = sum(keys.map((k) => mix[k]));
+      row.append(h('span', null, flagged + ' of ' + mix.reps + ' reps'));
+    }
+    els.flags.append(row);
+    if (keys.length) {
+      els.flags.append(caption('A flag is a rep the camera was unsure about, not a rep you did badly. '
+        + 'Check the depth preset in Settings if shallow reps keep showing up.'));
+    }
+  }
+
+  // ── time of day ───────────────────────────────────────────────
+
+  function paintTod() {
+    clear(els.tod);
+    let buckets = [];
+    try {
+      buckets = timeOfDay(sets);
+    } catch (e) {
+      els.tod.append(headBlock('Time of day'), h('p', { class: 'pg-error' }, 'failed: ' + errText(e)));
+      return;
+    }
+    const total = sum(buckets.map((b) => b.reps));
+    els.tod.append(headBlock('Time of day', total ? 'share of every rep you logged' : 'no reps yet'));
+    const bar = h('div', { class: 'pg-propbar' });
+    if (!total) {
+      bar.append(h('i', { class: 'pg-propseg empty lv0' }));
+    } else {
+      buckets.forEach((b, i) => {
+        if (b.reps <= 0) return;
+        bar.append(h('i', { class: 'pg-propseg ' + TOD_TONE[i], style: { flexGrow: String(b.reps) } },
+          b.pct >= 0.16 ? h('span', { class: 'pg-propnum' }, pct(b.pct)) : null));
+      });
+    }
+    els.tod.append(bar);
+    buckets.forEach((b, i) => {
+      els.tod.append(h('div', { class: 'pg-todrow' },
+        h('span', { class: 'pg-hsq ' + TOD_TONE[i] }),
+        h('span', { class: 'pg-todlbl' }, b.label),
+        h('span', { class: 'pg-todsub' }, b.sets ? b.sets + ' sets · ' + b.reps + ' reps' : 'nothing'),
+        h('b', { class: 'num pg-todpct' }, total ? pct(b.pct) : '0%')));
+    });
+  }
+
+  function paintFoot() {
+    clear(els.foot);
+    els.foot.append(h('p', { class: 'sub' },
+      'All of this is computed from the sets on this phone. Export a copy from Settings before you clear '
+      + 'Safari website data — iOS can drop the database.'));
+  }
+
+  // ── day sheet ─────────────────────────────────────────────────
+
+  function closeSheet() {
+    if (scrim && scrim.parentNode) scrim.parentNode.removeChild(scrim);
+    scrim = null;
+  }
+
+  async function openDaySheet(day) {
+    closeSheet();
+    const title = h('div', { class: 'pg-paneltitle' }, fmtDay(day));
+    const totalLine = h('div', { class: 'pg-panellbl' }, 'loading…');
+    const body = h('div', { class: 'pg-panelbody' });
+    const panel = h('div', { class: 'pg-panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'sets on ' + day },
+      h('div', { class: 'pg-panelhead' }, title,
+        h('button', { class: 'pg-close', type: 'button', onclick: () => dismiss() }, 'done')),
+      totalLine, body);
+    scrim = h('div', { class: 'pg-scrim' }, panel);
+    scrim.addEventListener('click', (ev) => { if (ev.target === scrim) dismiss(); });
+    document.body.append(scrim);
+
+    let local = [];
+    try {
+      const rowsList = await listSetsForDay(day);
+      local = Array.isArray(rowsList) ? rowsList : [];
+    } catch (e) {
+      body.append(h('p', { class: 'pg-error' }, 'could not read this day: ' + errText(e)));
+      totalLine.textContent = '';
+      return;
+    }
+
+    const repaint = () => {
+      clear(body);
+      if (!local.length) body.append(h('p', { class: 'sub pg-panelempty' }, 'nothing logged on this day.'));
+      local.forEach((s) => body.append(sheetRow(s)));
+      body.append(addRow(day));
+      totalLine.textContent = local.length
+        ? local.length + ' set' + (local.length === 1 ? '' : 's') + ' · ' + sum(local.map(repsOf))
+          + ' reps kept · camera saw ' + sum(local.map(detectedOf))
+        : 'no sets on this day';
+    };
+    const reload = async () => {
+      try {
+        const rowsList = await listSetsForDay(day);
+        local = Array.isArray(rowsList) ? rowsList : [];
+      } catch { /* keep what we have on screen */ }
+      repaint();
+    };
+    repaint();
+
+    function dismiss() {
+      closeSheet();
+      if (dirty) rerender();
+    }
+    function markSaved() { dirty = true; }
+
+    // rows need the mutators, so hang them off the sheet's own scope
+    function sheetRow(set) {
+      const row = h('div', { class: 'pg-srow' });
+      const num = h('span', { class: 'pg-snum' }, String(repsOf(set)));
+      const info = h('span', { class: 'pg-smeta' },
+        fmtClock(set.startedAt || 0) + ' · ' + sourceLabel(set) + ' · camera saw ' + detectedOf(set)
+        + (flagCount(set) ? ' · ' + flagCount(set) + ' flagged' : ''));
+      const open = h('button', { class: 'pg-sopen', type: 'button' }, num, info);
+      const del = h('button', { class: 'btn btn-quiet pg-smini', type: 'button' }, 'delete');
+      const err = h('span', { class: 'pg-err' });
+      const inp = h('input', {
+        class: 'pg-in', type: 'number', inputmode: 'numeric', min: '0', max: '999',
+        'aria-label': 'final reps for this set',
+      });
+      const saveBtn = h('button', { class: 'btn btn-primary pg-smini', type: 'button' }, 'save');
+      const cancelBtn = h('button', { class: 'btn btn-quiet pg-smini', type: 'button' }, 'cancel');
+      const edit = h('div', { class: 'pg-sedit', hidden: true }, inp, saveBtn, cancelBtn, err);
+      row.append(h('div', { class: 'pg-smain' }, open, del), edit);
+
+      const showEdit = () => {
+        err.textContent = '';
+        inp.value = String(repsOf(set));
+        edit.hidden = false;
+        del.hidden = true;
+        num.hidden = true;
+        try { inp.focus(); } catch { /* focus is a nicety */ }
+      };
+      const hideEdit = () => {
+        edit.hidden = true;
+        del.hidden = false;
+        num.hidden = false;
+      };
+      open.addEventListener('click', () => { if (edit.hidden) showEdit(); else hideEdit(); });
+      cancelBtn.addEventListener('click', hideEdit);
+      saveBtn.addEventListener('click', async () => {
+        const v = parseReps(inp.value);
+        if (v === null) { err.textContent = 'enter a number'; return; }
+        saveBtn.disabled = true;
+        err.textContent = '';
+        try {
+          const next = await updateSet(set.id, { repsFinal: v });   // repsDetected stays as recorded
+          markSaved();
+          local = local.map((s) => (s.id === set.id ? (next || { ...s, repsFinal: v }) : s));
+          repaint();
+        } catch (e) {
+          err.textContent = 'could not save: ' + errText(e);
+          saveBtn.disabled = false;
+        }
+      });
+      del.addEventListener('click', async () => {
+        if (!confirm('Delete this set of ' + repsOf(set) + ' reps?')) return;
+        del.disabled = true;
+        try {
+          await deleteSet(set.id);
+          markSaved();
+          local = local.filter((s) => s.id !== set.id);
+          repaint();
+        } catch (e) {
+          del.disabled = false;
+          err.textContent = 'could not delete: ' + errText(e);
+          showEdit();
+        }
+      });
+      return row;
+    }
+
+    function addRow(dayKeyStr) {
+      const btn = h('button', { class: 'pg-linkbtn', type: 'button' }, 'add a set here');
+      const inp = h('input', {
+        class: 'pg-in', type: 'number', inputmode: 'numeric', min: '0', max: '999',
+        'aria-label': 'reps to add for ' + fmtDay(dayKeyStr),
+      });
+      const saveBtn = h('button', { class: 'btn btn-primary pg-smini', type: 'button' }, 'save');
+      const cancelBtn = h('button', { class: 'btn btn-quiet pg-smini', type: 'button' }, 'cancel');
+      const err = h('span', { class: 'pg-err' });
+      const editor = h('div', { class: 'pg-sedit', hidden: true }, inp, saveBtn, cancelBtn, err);
+      const box = h('div', { class: 'pg-sadd' },
+        h('div', { class: 'pg-smain' }, btn, editor),
+        h('p', { class: 'sub pg-addnote' }, 'logged as yours — detected reps stay zero, so nothing is claimed for the camera.'));
+      btn.addEventListener('click', () => {
+        err.textContent = '';
+        inp.value = '';
+        btn.hidden = true;
+        editor.hidden = false;
+        try { inp.focus(); } catch { /* ignore */ }
+      });
+      cancelBtn.addEventListener('click', () => { editor.hidden = true; btn.hidden = false; });
+      saveBtn.addEventListener('click', async () => {
+        const v = parseReps(inp.value);
+        if (v === null) { err.textContent = 'enter a number'; return; }
+        saveBtn.disabled = true;
+        err.textContent = '';
+        try {
+          await saveSet({
+            startedAt: noonOf(dayKeyStr), day: dayKeyStr, mode: 'manual', source: 'manual',
+            repsDetected: 0, repsFinal: v, durationMs: 0, flags: {}, notes: '',
+          }, []);
+          markSaved();
+          await reload();
+        } catch (e) {
+          err.textContent = 'could not save: ' + errText(e);
+          saveBtn.disabled = false;
+        }
+      });
+      return box;
+    }
+  }
+
+  return {
+    unmount() {
+      window.removeEventListener('resize', onResize);
+      clearTimeout(resizeTimer);
+      closeSheet();
+    },
+  };
+}
+
+/* ── the target lives in localStorage: it is a wish, not a record ── */
+
+function readTarget() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(TARGET_KEY);
+  } catch {
+    return DEFAULT_TARGET;
+  }
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 999 ? n : DEFAULT_TARGET;
+}
+
+function writeTarget(n) {
+  try {
+    localStorage.setItem(TARGET_KEY, String(n));
+  } catch { /* private mode: keep it for this session only */ }
 }
 __EOF_js_views_progress_js__
 
@@ -3013,15 +4822,21 @@ mkdir -p 'js/views'
 cat > 'js/views/settings.js' <<'__EOF_js_views_settings_js__'
 import { load, save, params, setParam, resetParams, PRESETS } from '../settings.js';
 import { exportJSON, importJSON, countSets } from '../db.js';
+import { forgetCache, loadGoals, loadPasses, loadStreak, passesThisWeek, saveGoals, saveStreak } from '../goals.js';
+import { dayKey } from '../stats.js';
 import { download } from '../util.js';
 import { platformInfo, persistentStatus, requestPersistent, tryBadging } from '../upgrade.js';
 
 const SEL = (id, opts, val) => `<select id="${id}">` +
   opts.map(([v, l]) => `<option value="${v}"${v === val ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
 
+const STREAK_OPTS = [['weekly', 'weeks on target'], ['daily', 'days in a row']];
+const PASS_OPTS = ['0', '1', '2', '3'];
+
 export default function settingsView(host) {
   const s = load();
   const p = params();
+  const passOpts = PASS_OPTS.map((v) => [v, v === '0' ? 'off' : v === '1' ? 'one a week' : v + ' a week']);
 
   host.innerHTML = `
     <div class="list">
@@ -3068,6 +4883,22 @@ export default function settingsView(host) {
         <div class="field"><label for="fps">Detection rate cap <b id="fpsOut"></b></label>
           <input type="range" id="fps" min="10" max="30" step="1"></div>
         <label class="tog"><span>Manual tap-to-log<span class="sub">no camera at all</span></span><input type="checkbox" id="manualMode"></label>
+      </div>
+      <div class="rule"></div>
+      <div class="pad"><h2 class="h1" style="margin:0 0 6px">Goals</h2>
+        <div class="field"><label for="gdaily">Daily <b id="gdailyOut"></b></label>
+          <input type="range" id="gdaily" min="0" max="300" step="5"></div>
+        <div class="field"><label for="gweekly">Weekly <b id="gweeklyOut"></b></label>
+          <input type="range" id="gweekly" min="0" max="2000" step="25"></div>
+        <div class="field"><label for="gyearly">This year <b id="gyearlyOut"></b></label>
+          <input type="range" id="gyearly" min="0" max="50000" step="500"></div>
+        <div class="sub" style="margin-top:2px">zero switches that target off — the Today ring only counts the daily one</div>
+        <div class="rule"></div>
+        <div class="field"><label for="streakMode">Streak counts</label>${SEL('streakMode', STREAK_OPTS)}</div>
+        <div class="sub" id="streakHelp" style="margin:-4px 0 10px">weeks: a week stays alive by hitting the weekly total</div>
+        <div class="field"><label for="passes">Rest passes</label>${SEL('passes', passOpts)}</div>
+        <div class="sub" style="margin:-4px 0 6px">a pass keeps a streak alive through a day you skipped</div>
+        <div class="kv"><span>passes left this week</span><b class="num" id="passesLeft">…</b></div>
       </div>
       <div class="rule"></div>
       <div class="pad"><h2 class="h1" style="margin:0 0 6px">Data</h2>
@@ -3174,6 +5005,49 @@ export default function settingsView(host) {
   }
   syncAll();
 
+  // ── goals and streak rules ────────────────────────────────────
+  const fmtGoal = (key, v) => (v === 0 ? 'off' : v + ' ' + (key === 'gyearly' ? 'reps this year' : 'reps'));
+
+  async function paintPasses() {
+    const cfg = await loadStreak();
+    const passes = await loadPasses();
+    q('#passesLeft').textContent = cfg.passesPerWeek === 0
+      ? 'off'
+      : String(Math.max(0, cfg.passesPerWeek - await passesThisWeek(passes, dayKey(Date.now()))));
+  }
+
+  function streakHelp(mode) {
+    q('#streakHelp').textContent = mode === 'daily'
+      ? 'days: every day either hits the daily total or spends a rest pass'
+      : 'weeks: a week stays alive by hitting the weekly total';
+  }
+
+  Promise.all([loadGoals(), loadStreak()]).then(([g, cfg]) => {
+    for (const [id, val] of [['gdaily', g.daily], ['gweekly', g.weekly], ['gyearly', g.yearly]]) {
+      q('#' + id).value = String(val);
+      q('#' + id + 'Out').textContent = fmtGoal(id, val);
+      q('#' + id).addEventListener('input', (e) => {
+        const v = Number(e.target.value);
+        q('#' + id + 'Out').textContent = fmtGoal(id, v);
+        saveGoals({ [id.slice(1)]: v }).catch(() => { q('#dataMsg').textContent = 'could not save goals'; });
+      });
+    }
+    q('#streakMode').value = cfg.mode;
+    q('#passes').value = String(cfg.passesPerWeek);
+    streakHelp(cfg.mode);
+    paintPasses().catch(() => { q('#passesLeft').textContent = '?'; });
+  }).catch(() => {
+    q('#gdailyOut').textContent = '?';
+    q('#dataMsg').textContent = 'goals unavailable — the database is not readable in this browser';
+  });
+
+  q('#streakMode').addEventListener('change', (e) => {
+    saveStreak({ mode: e.target.value }).then(() => { streakHelp(e.target.value); paintPasses(); });
+  });
+  q('#passes').addEventListener('change', (e) => {
+    saveStreak({ passesPerWeek: Number(e.target.value) }).then(paintPasses);
+  });
+
   countSets().then((n) => { q('#setCount').textContent = String(n); }).catch(() => { q('#setCount').textContent = '?'; });
   persistentStatus().then(async (ok) => {
     q('#persist').textContent = ok ? 'granted' : 'not granted';
@@ -3201,8 +5075,13 @@ export default function settingsView(host) {
     const text = await file.text();
     if (!confirm('Merge sets from ' + file.name + ' into this phone?')) return;
     const res = await importJSON(text);
-    q('#dataMsg').textContent = res.ok ? 'Imported ' + res.added + ' sets.' : 'Import failed: ' + res.error;
-    if (res.ok) countSets().then((n) => { q('#setCount').textContent = String(n); });
+    q('#dataMsg').textContent = res.ok
+      ? 'Imported ' + res.added + ' sets' + (res.metaWritten ? ' and ' + res.metaWritten + ' settings records' : '') + '.'
+      : 'Import failed: ' + res.error;
+    if (res.ok) {
+      countSets().then((n) => { q('#setCount').textContent = String(n); });
+      forgetCache();
+    }
   });
   q('#badgeTest').addEventListener('click', () => {
     const ok = tryBadging(7);
@@ -3215,72 +5094,479 @@ __EOF_js_views_settings_js__
 
 mkdir -p 'js/views'
 cat > 'js/views/today.js' <<'__EOF_js_views_today_js__'
-import { listSetsForDay, deleteSet } from '../db.js';
-import { today } from '../util.js';
+/* Today: the day's number, the goal ring, the streak, and the sets behind them.
+   All numbers come from stats.js / goals.js over one listSets() read; nothing here recomputes
+   totals by hand except the today filter, so the screen and the Progress screen can never disagree. */
 
-export default async function todayView(host) {
-  host.innerHTML = `
-    <div class="todaytotal">
-      <div class="num" id="tot">0</div>
-      <div class="sub" id="dateline"></div>
+import { deleteSet, listSets, saveSet, updateSet } from '../db.js';
+import { goalStatus, usePass } from '../goals.js';
+import { byDay, dayFromKey, gaps, records } from '../stats.js';
+import { clamp, dayOf, fmtClock, fmtDay, h, pct, sum, today } from '../util.js';
+
+const NS = 'http://www.w3.org/2000/svg';
+const SIZE = 88;
+const STROKE = 7;
+const R = (SIZE - STROKE) / 2 - 2;
+const C = 2 * Math.PI * R;
+
+const SKELETON = `
+  <div class="list">
+    <div class="tg-hero">
+      <div class="tg-heronum">
+        <div class="tg-total" id="tgTotal">0</div>
+        <div class="tg-date" id="tgDate"></div>
+        <div class="tg-unit">reps today</div>
+        <div class="tg-note" id="tgNote"></div>
+      </div>
+      <div class="tg-ringwrap" id="tgRing"></div>
     </div>
-    <div class="rule" style="margin:0 16px"></div>
-    <div class="list" id="list"></div>
-    <div class="pad sub" id="foot"></div>`;
+    <div class="tg-goalnote" id="tgGoalNote"></div>
+    <div class="row tg-streak" id="tgStreak"></div>
+    <div class="rule" style="margin:6px 16px 10px"></div>
+    <div id="tgMinis"></div>
+    <div id="tgSetsHead"></div>
+    <div id="tgSets"></div>
+    <div id="tgFoot"></div>
+    <div id="tgMissed"></div>
+    <a class="tg-prog" href="#/progress"><span class="grow">progress and history</span><span class="chev" aria-hidden="true">›</span></a>
+    <div style="height:12px"></div>
+  </div>`;
 
-  host.querySelector('#dateline').textContent = new Date().toLocaleDateString(undefined, {
+/* ── small builders ────────────────────────────────────────────── */
+
+function svg(tag, attrs) {
+  const el = document.createElementNS(NS, tag);
+  for (const k of Object.keys(attrs || {})) {
+    const v = attrs[k];
+    if (v === null || v === undefined || v === false) continue;
+    el.setAttribute(k, String(v));
+  }
+  return el;
+}
+
+/** Hand-rolled ring: one track circle, one arc whose stroke-dasharray is the arc length. */
+function ringEl(frac, met) {
+  const shown = clamp(Number(frac) || 0, 0, 1) * C;
+  const half = SIZE / 2;
+  const arc = svg('circle', {
+    class: 'tg-arc', cx: half, cy: half, r: R, fill: 'none', 'stroke-width': STROKE,
+    'stroke-dasharray': shown.toFixed(2) + ' ' + (C - shown).toFixed(2),
+  });
+  if (shown > 0.5) arc.setAttribute('stroke-linecap', 'round');
+  const el = svg('svg', {
+    class: 'tg-ring' + (met ? ' met' : ''), width: SIZE, height: SIZE,
+    viewBox: '0 0 ' + SIZE + ' ' + SIZE, 'aria-hidden': 'true', focusable: 'false',
+  });
+  el.append(svg('circle', {
+    class: 'tg-track', cx: half, cy: half, r: R, fill: 'none', 'stroke-width': STROKE,
+  }), arc);
+  return el;
+}
+
+function errText(e) {
+  return (e && e.message) ? e.message : String(e);
+}
+
+function flagCount(s) {
+  const f = (s && s.flags) || {};
+  return (Number(f.sag) || 0) + (Number(f.pike) || 0) + (Number(f.half) || 0)
+    + (Number(f.lockout) || 0) + (Number(f.lost) || 0);
+}
+
+function sourceLabel(s) {
+  if (s.source === 'manual' || s.mode === 'manual') return 'manual';
+  return s.cameraUsed === 'user' ? 'front cam' : 'side cam';
+}
+
+function repsOf(s) {
+  return Number(s && s.repsFinal) || 0;
+}
+
+function detectedOf(s) {
+  return Number(s && s.repsDetected) || 0;
+}
+
+/** '2026-10-20' -> that noon, local. Manual backfills land at midday so they sort inside the day. */
+function noonOf(dayKeyStr) {
+  const d = new Date(dayFromKey(dayKeyStr));
+  d.setHours(12, 0, 0, 0);
+  return d.getTime();
+}
+
+function parseReps(raw) {
+  const n = parseInt(String(raw).trim(), 10);
+  if (!Number.isFinite(n)) return null;
+  return clamp(n, 0, 999);
+}
+
+/* ── the view ──────────────────────────────────────────────────── */
+
+export default async function todayView(host, ctx) {
+  const key = today();
+  const rerender = () => {
+    if (ctx && typeof ctx.render === 'function') return ctx.render();
+    return null;
+  };
+  let scrim = null;
+
+  host.innerHTML = SKELETON;
+  const q = (sel) => host.querySelector(sel);
+  const els = {
+    total: q('#tgTotal'), date: q('#tgDate'), note: q('#tgNote'), ring: q('#tgRing'),
+    goalNote: q('#tgGoalNote'), streak: q('#tgStreak'), minis: q('#tgMinis'),
+    setsHead: q('#tgSetsHead'), sets: q('#tgSets'), foot: q('#tgFoot'), missed: q('#tgMissed'),
+  };
+
+  els.date.textContent = new Date().toLocaleDateString(undefined, {
     weekday: 'long', day: 'numeric', month: 'long',
   });
 
-  const list = host.querySelector('#list');
-  const tot = host.querySelector('#tot');
-  const foot = host.querySelector('#foot');
-
-  async function refresh() {
-    let sets = [];
-    try { sets = await listSetsForDay(today()); } catch (e) { foot.textContent = 'database unreadable: ' + e.message; }
-    sets.sort((a, b) => b.startedAt - a.startedAt);
-    tot.textContent = String(sets.reduce((a, s) => a + (s.repsFinal || 0), 0));
-    list.replaceChildren();
-    if (!sets.length) {
-      const p = document.createElement('p');
-      p.className = 'soon';
-      p.textContent = 'No sets yet today. Train → Start set.';
-      list.append(p);
-      foot.textContent = '';
-      return;
+  // ── read everything once, guarded ─────────────────────────────
+  let sets = [];
+  let status = null;
+  let setsError = '';      // no sets at all -> lists and gaps are meaningless
+  let goalsError = '';     // sets are fine, goals meta is not -> header rows degrade to lifetime only
+  try {
+    sets = await listSets();
+    if (!Array.isArray(sets)) sets = [];
+  } catch (e) {
+    setsError = 'database unreadable: ' + errText(e);
+    sets = [];
+  }
+  if (!setsError) {
+    try {
+      status = await goalStatus(sets, key);
+    } catch (e) {
+      goalsError = 'goals unreadable: ' + errText(e);
     }
-    sets.forEach((s) => {
-      const row = document.createElement('div');
-      row.className = 'item';
-      const left = document.createElement('div');
-      const n = document.createElement('div');
-      n.className = 'num';
-      n.textContent = String(s.repsFinal || 0);
-      const m = document.createElement('div');
-      m.className = 'sub';
-      m.textContent = new Date(s.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
-        ' · ' + (s.source === 'manual' ? 'manual' : s.cameraUsed === 'user' ? 'front cam' : 'side cam');
-      left.append(n, m);
-      const right = document.createElement('button');
-      right.className = 'btn btn-quiet';
-      right.textContent = 'delete';
-      right.addEventListener('click', async () => {
-        if (!confirm('Delete this set?')) return;
-        await deleteSet(s.id);
-        refresh();
-      });
-      row.append(left, right);
-      list.append(row);
-    });
-    const det = sets.reduce((a, s) => a + (s.repsDetected || 0), 0);
-    const fin = sets.reduce((a, s) => a + (s.repsFinal || 0), 0);
-    foot.textContent = sets.length + ' set' + (sets.length > 1 ? 's' : '') +
-      ' · camera saw ' + det + ', you kept ' + fin + '.';
+  }
+  const failed = setsError || goalsError;
+  if (failed) els.note.textContent = failed;
+
+  let rec = null;
+  let days = byDay([]);
+  if (!setsError) {
+    try {
+      days = byDay(sets);
+      rec = records(sets);
+    } catch (e) {
+      els.note.textContent = errText(e);
+    }
   }
 
-  await refresh();
-  return {};
+  const mine = sets
+    .filter((s) => s && ((s.day || dayOf(s.startedAt || 0)) === key))
+    .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  const dayReps = sum(mine.map(repsOf));
+
+  els.total.textContent = String(dayReps);
+
+  const daily = status ? status.daily : null;
+  const goal = daily ? daily.goal : 0;
+  const met = !!daily && goal > 0 && daily.reps >= goal;
+
+  paintRing(daily, met);
+  paintStreak(status, met, key);
+  paintMinis(status, days, rec, key);
+  paintSets(mine, setsError);
+  paintMissed(days, status, key);
+
+  // ── painters ──────────────────────────────────────────────────
+
+  function paintRing(d, wasMet) {
+    els.ring.replaceChildren();
+    if (!d) {
+      els.goalNote.textContent = failed ? '' : 'no goal on record';
+      return;
+    }
+    if (d.goal <= 0) {
+      els.goalNote.textContent = 'daily goal is off — set one in Settings';
+      return;
+    }
+    els.ring.append(ringEl(d.pct, wasMet));
+    els.ring.append(h('div', { class: 'tg-ringtext' },
+      h('div', { class: 'tg-ringnum' }, String(d.goal)),
+      h('div', { class: 'tg-ringlbl' }, wasMet ? 'met' : 'goal')));
+    const left = Math.max(0, d.goal - d.reps);
+    els.goalNote.className = 'tg-goalnote' + (wasMet ? ' met' : '');
+    els.goalNote.textContent = wasMet
+      ? 'goal met'
+      : left + ' to go · goal ' + d.goal;
+  }
+
+  function paintStreak(st, wasMet, dayKeyStr) {
+    els.streak.replaceChildren();
+    if (!st) return;
+    const s = st.streak;
+    const txt = s.n > 0
+      ? (s.mode === 'daily'
+        ? s.n + (s.n === 1 ? ' day in a row' : ' days in a row')
+        : s.n + (s.n === 1 ? ' week on target' : ' weeks on target'))
+      : (s.mode === 'daily' ? 'no streak yet' : 'no full week on target yet');
+    const line = h('span', { class: 'tg-streakline' },
+      h('span', { class: 'tg-streaktxt' }, txt));
+    if (s.mode === 'weekly' && st.goals.weekly > 0) {
+      line.append(h('span', { class: 'tg-streaktxt dim' }, ' · ' + pct(st.weekly.pct) + ' of this week'));
+    }
+    els.streak.append(line);
+
+    const passes = st.passes || {};
+    const hasPasses = st.passesLeft > 0 || !!passes[dayKeyStr];
+    if (!hasPasses) return;
+    if (passes[dayKeyStr]) {
+      els.streak.append(h('span', { class: 'tg-donetag' }, 'rest taken today'));
+      return;
+    }
+    if (wasMet) return;
+    // on a phone with no history there is no streak to keep alive — the pass is offered
+    // from the missed-day sheet instead
+    if (!rec || rec.lifetimeSets === 0) return;
+
+    const why = h('span', { class: 'tg-streakwhy' });
+    const btn = h('button', { class: 'tg-linkbtn', type: 'button' }, 'use a rest pass');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      why.textContent = '';
+      try {
+        const res = await usePass(dayKeyStr);
+        if (res && res.ok) { await rerender(); return; }
+        why.textContent = (res && res.reason) || 'the pass was not used';
+        btn.disabled = false;
+      } catch (e) {
+        why.textContent = errText(e);
+        btn.disabled = false;
+      }
+    });
+    els.streak.append(btn, why);
+  }
+
+  function paintMinis(st, dayMap, hist, dayKeyStr) {
+    const rows = [];
+    if (st) {
+      rows.push(['this week', st.weekly.reps + ' of ' + st.weekly.goal + ' · ' + pct(st.weekly.pct)]);
+      let month = 0;
+      for (const [k, d] of dayMap) if (k.slice(0, 7) === dayKeyStr.slice(0, 7)) month += d.reps;
+      rows.push(['this month', String(month) + ' reps']);
+      rows.push(['this year', st.yearly.reps + ' of ' + st.yearly.goal + ' · ' + pct(st.yearly.pct)]);
+    }
+    if (hist) {
+      rows.push(['lifetime', hist.lifetimeReps + ' reps · ' + hist.lifetimeSets + ' sets']);
+    }
+    els.minis.replaceChildren();
+    if (!rows.length) return;   // the note under the date already says what failed
+    const box = h('div', { class: 'tg-minis' });
+    rows.forEach(([label, value]) => {
+      box.append(h('div', { class: 'kv' },
+        h('span', { class: 'tg-key' }, label),
+        h('b', { class: 'tg-val' }, value)));
+    });
+    els.minis.append(box);
+  }
+
+  function paintSets(list, dbFailed) {
+    els.setsHead.replaceChildren();
+    els.sets.replaceChildren();
+    els.foot.replaceChildren();
+    if (dbFailed) {
+      els.setsHead.append(h('div', { class: 'tg-head' }, 'sets'));
+      els.sets.append(h('p', { class: 'soon tg-empty' }, 'nothing to list — the saved sets could not be read.'));
+      return;
+    }
+    els.setsHead.append(h('div', { class: 'tg-head' },
+      'today’s sets' + (list.length ? ' · ' + list.length : '')));
+    if (!list.length) {
+      els.sets.append(h('p', { class: 'soon tg-empty' },
+        'no sets yet today. Train → start set, or add a missed day below.'));
+      return;
+    }
+    els.sets.replaceChildren(...list.map(setRow));
+    const det = sum(list.map(detectedOf));
+    const kept = sum(list.map(repsOf));
+    els.foot.append(h('div', { class: 'tg-foot' },
+      'camera saw ' + det + ', you kept ' + kept + '.'));
+  }
+
+  function setRow(s) {
+    const box = h('div', { class: 'tg-set' });
+    const line = h('div', { class: 'tg-setmain' });
+    const flagged = flagCount(s);
+    const meta = fmtClock(s.startedAt || 0) + ' · ' + sourceLabel(s)
+      + (flagged ? ' · ' + flagged + ' flagged' : '');
+    const num = h('span', { class: 'tg-setnum' }, String(repsOf(s)));
+    const open = h('button', { class: 'tg-editbtn', type: 'button' },
+      num, h('span', { class: 'tg-setmeta' }, meta));
+    const del = h('button', { class: 'btn btn-quiet tg-mini', type: 'button' }, 'delete');
+    line.append(open, del);
+
+    const editline = h('div', { class: 'tg-editline', hidden: true });
+    const inp = h('input', {
+      class: 'tg-in', type: 'number', inputmode: 'numeric', min: '0', max: '999',
+      'aria-label': 'reps for this set',
+    });
+    const err = h('span', { class: 'tg-err' });
+    const saveBtn = h('button', { class: 'btn btn-primary tg-mini', type: 'button' }, 'save');
+    const cancelBtn = h('button', { class: 'btn btn-quiet tg-mini', type: 'button' }, 'cancel');
+    editline.append(inp, saveBtn, cancelBtn, err);
+
+    function openEditor() {
+      err.textContent = '';
+      inp.value = String(repsOf(s));
+      editline.hidden = false;
+      del.hidden = true;
+      num.hidden = true;          // the meta line stays, so you can see which set you are fixing
+      try { inp.focus({ preventScroll: false }); } catch { inp.focus(); }
+    }
+    function closeEditor() {
+      editline.hidden = true;
+      del.hidden = false;
+      num.hidden = false;
+    }
+
+    open.addEventListener('click', () => { if (editline.hidden) openEditor(); else closeEditor(); });
+    cancelBtn.addEventListener('click', closeEditor);
+    saveBtn.addEventListener('click', async () => {
+      const v = parseReps(inp.value);
+      if (v === null) { err.textContent = 'enter a number'; return; }
+      err.textContent = '';
+      saveBtn.disabled = true;
+      try {
+        await updateSet(s.id, { repsFinal: v });   // repsDetected is left alone on purpose
+        await rerender();
+      } catch (e) {
+        err.textContent = 'could not save: ' + errText(e);
+        saveBtn.disabled = false;
+      }
+    });
+    del.addEventListener('click', async () => {
+      if (!confirm('Delete this set?')) return;
+      del.disabled = true;
+      try {
+        await deleteSet(s.id);
+        await rerender();
+      } catch (e) {
+        del.disabled = false;
+        err.textContent = 'could not delete: ' + errText(e);
+        openEditor();
+      }
+    });
+
+    box.append(line, editline);
+    return box;
+  }
+
+  function paintMissed(dayMap, st, dayKeyStr) {
+    els.missed.replaceChildren();
+    if (setsError || !dayMap || dayMap.size < 2) return;
+    let list = [];
+    try {
+      list = gaps(dayMap, 30).filter((k) => k < dayKeyStr);
+    } catch { list = []; }
+    if (!list.length) return;
+    const month = dayKeyStr.slice(0, 7);
+    const allThisMonth = list.every((k) => k.slice(0, 7) === month);
+    const span = allThisMonth ? 'this month' : 'in the last 30 days';
+    const btn = h('button', { class: 'tg-quietrow', type: 'button' },
+      list.length + ' missed ' + (list.length === 1 ? 'day' : 'days') + ' ' + span);
+    btn.addEventListener('click', () => openGapSheet(list, st));
+    els.missed.append(btn);
+  }
+
+  // ── missed-day sheet ──────────────────────────────────────────
+
+  function closeSheet() {
+    if (scrim && scrim.parentNode) scrim.parentNode.removeChild(scrim);
+    scrim = null;
+  }
+
+  function openGapSheet(list, st) {
+    closeSheet();
+    const passes = (st && st.passes) || {};
+    const panel = h('div', { class: 'tg-panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'missed days' });
+    panel.append(h('div', { class: 'tg-panelhead' },
+      h('div', { class: 'tg-paneltitle' }, 'missed days'),
+      h('button', { class: 'tg-linkbtn dim', type: 'button', onclick: closeSheet }, 'done')));
+    panel.append(h('span', { class: 'tg-panellbl' },
+      'log a set you actually did, or spend a rest pass. neither changes what the camera saw.'));
+    list.slice(-14).reverse().forEach((day) => panel.append(gapRow(day, passes[day])));
+    scrim = h('div', { class: 'tg-scrim' }, panel);
+    scrim.addEventListener('click', (ev) => { if (ev.target === scrim) closeSheet(); });
+    document.body.append(scrim);
+  }
+
+  function gapRow(day, alreadyPassed) {
+    const row = h('div', { class: 'tg-gaprow' });
+    row.append(h('div', { class: 'tg-gapday' }, fmtDay(day)));
+    const err = h('span', { class: 'tg-err' });
+
+    if (alreadyPassed) {
+      row.append(h('span', { class: 'tg-donetag' }, 'rest taken'));
+      row.append(err);
+      return row;
+    }
+
+    const addBtn = h('button', { class: 'tg-linkbtn', type: 'button' }, 'add');
+    const restBtn = h('button', { class: 'tg-linkbtn dim', type: 'button' }, 'rest');
+    const inp = h('input', { class: 'tg-in', type: 'number', inputmode: 'numeric', min: '0', max: '999', 'aria-label': 'reps for ' + fmtDay(day) });
+    const saveBtn = h('button', { class: 'btn btn-primary tg-mini', type: 'button' }, 'save');
+    const cancelBtn = h('button', { class: 'btn btn-quiet tg-mini', type: 'button' }, 'cancel');
+    const editor = h('div', { class: 'tg-gapedit', hidden: true }, inp, saveBtn, cancelBtn);
+
+    addBtn.addEventListener('click', () => {
+      err.textContent = '';
+      inp.value = '';
+      addBtn.hidden = true;
+      restBtn.hidden = true;
+      editor.hidden = false;
+      try { inp.focus(); } catch { /* focus is a nicety */ }
+    });
+    cancelBtn.addEventListener('click', () => {
+      editor.hidden = true;
+      addBtn.hidden = false;
+      restBtn.hidden = false;
+    });
+    saveBtn.addEventListener('click', async () => {
+      const v = parseReps(inp.value);
+      if (v === null) { err.textContent = 'enter a number'; return; }
+      saveBtn.disabled = true;
+      err.textContent = '';
+      try {
+        // manual backfill: detected 0, no rep rows — the app never claims the camera saw this
+        await saveSet({
+          startedAt: noonOf(day),
+          day,
+          mode: 'manual',
+          source: 'manual',
+          repsDetected: 0,
+          repsFinal: v,
+          flags: {},
+        }, []);
+        await rerender();
+      } catch (e) {
+        err.textContent = 'could not save: ' + errText(e);
+        saveBtn.disabled = false;
+      }
+    });
+    restBtn.addEventListener('click', async () => {
+      restBtn.disabled = true;
+      err.textContent = '';
+      try {
+        const res = await usePass(day);
+        if (res && res.ok) { await rerender(); return; }
+        err.textContent = (res && res.reason) || 'the pass was not used';
+        restBtn.disabled = false;
+      } catch (e) {
+        err.textContent = errText(e);
+        restBtn.disabled = false;
+      }
+    });
+
+    row.append(addBtn, restBtn, editor, err);
+    return row;
+  }
+
+  return {
+    unmount() { closeSheet(); },
+  };
 }
 __EOF_js_views_today_js__
 
@@ -5011,6 +7297,365 @@ console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAI
 process.exitCode = failures === 0 ? 0 : 1;
 __EOF_tests_counter_test_mjs__
 
+mkdir -p 'tests'
+cat > 'tests/stats.test.mjs' <<'__EOF_tests_stats_test_mjs__'
+/* Node test for the aggregation layer. No DOM, no IndexedDB — stats.js is pure.
+   Run: node tests/stats.test.mjs */
+
+import assert from 'node:assert/strict';
+import {
+  addDays, bestSetPerWeek, byDay, consistencySeries, dayBuckets, dayKey, dailyGoalStreak,
+  estimatedMax, flagMix, gaps, heatmap, monthBuckets, projectTarget, records, setConsistency,
+  summarize, timeOfDay, trainingStreak, weekBuckets, weekStart, weeklyGoalStreak, yearBuckets,
+} from '../js/stats.js';
+
+let pass = 0, fail = 0;
+function check(name, fn) {
+  try { fn(); pass += 1; console.log('PASS  ' + name); }
+  catch (err) { fail += 1; console.log('FAIL  ' + name + '\n      ' + (err.message || err)); }
+}
+
+const TODAY = dayKey(Date.now());
+const MONDAY = weekStart(TODAY);
+
+/** Place a set on an absolute day key so week-aligned fixtures stay week-aligned. */
+function setOn(key, reps, opts = {}) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const ago = Math.round((d.getTime() - new Date(key + 'T12:00:00').getTime()) / 86400000);
+  return set(ago, reps, opts);
+}
+
+/** Set builder: `ago` = whole days back from today, hour = local hour of day. */
+function set(ago, reps, opts = {}) {
+  const d = new Date();
+  d.setDate(d.getDate() - ago);
+  d.setHours(opts.hour ?? 8, opts.minute ?? 0, 0, 0);
+  return {
+    id: opts.id ?? 1000 + ago * 10, startedAt: d.getTime(), endedAt: d.getTime() + (opts.durationMs || reps * 3000),
+    durationMs: opts.durationMs || reps * 3000, mode: opts.mode || 'camera', source: opts.source || 'camera',
+    repsDetected: opts.detected ?? reps, repsFinal: reps, flags: opts.flags || {},
+    day: dayKey(d.getTime()),
+  };
+}
+
+/* ── calendar helpers ─────────────────────────────────────────── */
+
+check('weekStart lands on Monday and is stable across the week', () => {
+  assert.equal(weekStart(TODAY), MONDAY);
+  assert.equal(weekStart(addDays(MONDAY, 6)), MONDAY);
+});
+
+check('addDays crosses month boundaries', () => {
+  assert.equal(addDays('2026-01-31', 1), '2026-02-01');
+  assert.equal(addDays('2026-03-01', -1), '2026-02-28');
+  assert.equal(addDays('2028-02-28', 1), '2028-02-29');   // leap year
+});
+
+/* ── per-day totals ───────────────────────────────────────────── */
+
+const twoSets = [set(0, 12, { id: 1, hour: 7 }), set(0, 8, { id: 2, hour: 19, flags: { half: 2 } })];
+
+check('byDay adds reps and counts sets on the same day', () => {
+  const d = byDay(twoSets).get(TODAY);
+  assert.equal(d.reps, 20);
+  assert.equal(d.sets, 2);
+  assert.equal(d.best, 12);
+  assert.equal(d.flagged, 2);
+  assert.equal(d.clean, 18);
+  assert.equal(d.detected, 20);
+});
+
+check('empty input yields no days and no crash', () => {
+  assert.equal(byDay([]).size, 0);
+  assert.equal(byDay(undefined).size, 0);
+  const s = summarize([], { dailyGoal: 50 });
+  assert.equal(s.today.reps, 0);
+  assert.equal(s.goalPct, 0);
+  assert.equal(s.streak, 0);
+});
+
+check('a set with repsFinal 0 still counts as a set but adds no reps', () => {
+  const d = byDay([set(1, 0, { id: 5 })]).get(addDays(TODAY, -1));
+  assert.equal(d.reps, 0);
+  assert.equal(d.sets, 1);
+});
+
+/* ── streaks ──────────────────────────────────────────────────── */
+
+check('trainingStreak counts consecutive training days back from today', () => {
+  const days = byDay([set(0, 10), set(1, 10), set(2, 10, { id: 9 })]);
+  assert.equal(trainingStreak(days, TODAY), 3);
+});
+
+check('trainingStreak skips nothing: a missed day ends it', () => {
+  const days = byDay([set(0, 10), set(2, 10, { id: 9 }), set(3, 10, { id: 8 })]);
+  assert.equal(trainingStreak(days, TODAY), 1);
+});
+
+check('today-not-yet-trained does not kill yesterday’s streak', () => {
+  const days = byDay([set(1, 10, { id: 9 }), set(2, 10, { id: 8 })]);
+  assert.equal(trainingStreak(days, TODAY), 2);
+});
+
+check('weeklyGoalStreak counts completed weeks, current week only if already met', () => {
+  // three finished weeks at 400 reps each, current week untouched
+  const sets = [];
+  for (let w = 1; w <= 3; w++) {
+    for (let d = 0; d < 5; d++) sets.push(setOn(addDays(weekStart(TODAY), -7 * w + d), 80, { id: w * 100 + d }));
+  }
+  assert.equal(weeklyGoalStreak(byDay(sets), 350, TODAY), 3);
+  // meeting it in the current week extends the streak to 4
+  sets.push(setOn(TODAY, 400, { id: 999 }));
+  assert.equal(weeklyGoalStreak(byDay(sets), 350, TODAY), 4);
+});
+
+check('weeklyGoalStreak breaks on a short week', () => {
+  const sets = [];
+  for (let d = 0; d < 5; d++) sets.push(setOn(addDays(weekStart(TODAY), -14 + d), 80, { id: 200 + d }));
+  for (let d = 0; d < 5; d++) sets.push(setOn(addDays(weekStart(TODAY), -7 + d), 20, { id: 300 + d }));
+  assert.equal(weeklyGoalStreak(byDay(sets), 350, TODAY), 0);
+});
+
+check('dailyGoalStreak needs the daily goal, not just any training', () => {
+  const days = byDay([set(0, 60), set(1, 5, { id: 7 }), set(2, 60, { id: 8 })]);
+  assert.equal(dailyGoalStreak(days, 50, TODAY, new Set()), 1);
+});
+
+check('a rest pass bridges a day below goal', () => {
+  const days = byDay([set(0, 60), set(1, 5, { id: 7 }), set(2, 60, { id: 8 })]);
+  assert.equal(dailyGoalStreak(days, 50, TODAY, new Set([addDays(TODAY, -1)])), 3);
+});
+
+/* ── buckets ──────────────────────────────────────────────────── */
+
+check('dayBuckets returns the requested window, oldest first, ending today', () => {
+  const b = dayBuckets(byDay([set(0, 10), set(5, 20, { id: 3 })]), 30);
+  assert.equal(b.length, 30);
+  assert.equal(b[b.length - 1].key, TODAY);
+  assert.equal(b[b.length - 1].reps, 10);
+  assert.equal(b[b.length - 6].reps, 20);
+  assert.equal(b.reduce((n, x) => n + x.reps, 0), 30);
+});
+
+check('weekBuckets totals a week and reports training days', () => {
+  const sets = [set(0, 10), set(1, 10, { id: 4 })];
+  const w = weekBuckets(byDay(sets), 4).pop();
+  assert.equal(w.reps, 20);
+  assert.equal(w.days, 2);
+  assert.equal(w.key, MONDAY);
+});
+
+check('monthBuckets and yearBuckets key correctly', () => {
+  const days = byDay([set(0, 10)]);
+  assert.equal(monthBuckets(days, 3).pop().key, TODAY.slice(0, 7));
+  assert.equal(yearBuckets(days, 2).pop().key, TODAY.slice(0, 4));
+});
+
+check('buckets ignore activity outside the window', () => {
+  const b = dayBuckets(byDay([set(200, 500, { id: 11 })]), 30);
+  assert.equal(b.reduce((n, x) => n + x.reps, 0), 0);
+});
+
+/* ── sets-level series ────────────────────────────────────────── */
+
+check('bestSetPerWeek reports the single biggest set of the week', () => {
+  const weeks = bestSetPerWeek([set(0, 15), set(1, 40, { id: 12 }), set(0, 9, { id: 13 })], 4).pop();
+  assert.equal(weeks.best, 40);
+});
+
+check('timeOfDay splits volume into four buckets that sum to 1', () => {
+  const t = timeOfDay([set(0, 10, { hour: 6 }), set(0, 10, { id: 14, hour: 13 }), set(0, 20, { id: 15, hour: 22 })]);
+  assert.equal(t[1].reps, 10);
+  assert.equal(t[2].reps, 10);
+  assert.equal(t[3].reps, 20);
+  assert.ok(Math.abs(t.reduce((n, b) => n + b.pct, 0) - 1) < 1e-9);
+});
+
+/* ── records ──────────────────────────────────────────────────── */
+
+const recordSets = [
+  set(0, 25, { id: 21, hour: 7 }),
+  set(1, 30, { id: 22, durationMs: 90000 }),
+  set(40, 12, { id: 23 }),
+  set(400, 18, { id: 24 }),
+];
+
+check('records finds best set, longest set and lifetime totals', () => {
+  const r = records(recordSets);
+  assert.equal(r.bestSet.reps, 30);
+  assert.equal(r.longestSet.durationMs, 90000);
+  assert.equal(r.lifetimeReps, 85);
+  assert.equal(r.lifetimeSets, 4);
+  assert.equal(r.bestDay.reps, 30);
+});
+
+check('records on empty data returns zeros, not undefined', () => {
+  const r = records([]);
+  assert.equal(r.lifetimeReps, 0);
+  assert.equal(r.bestSet, null);
+  assert.equal(r.bestWeek, null);
+});
+
+/* ── estimates ────────────────────────────────────────────────── */
+
+check('estimatedMax adds an allowance to a recent best set', () => {
+  const e = estimatedMax([set(2, 40, { id: 31 })], 28, TODAY);
+  assert.equal(e.basis, 40);
+  assert.equal(e.est, 45);            // 40 + min(10, round(4.8)) = 45
+});
+
+check('estimatedMax ignores a best set outside the window', () => {
+  const e = estimatedMax([set(60, 90, { id: 32 }), set(1, 20, { id: 33 })], 28, TODAY);
+  assert.equal(e.basis, 20);
+});
+
+check('estimatedMax caps the allowance at ten reps', () => {
+  assert.equal(estimatedMax([set(0, 200, { id: 34 })], 28, TODAY).est, 210);
+});
+
+check('estimatedMax with no data is zero', () => {
+  assert.equal(estimatedMax([], 28, TODAY).est, 0);
+});
+
+check('projectTarget needs four data points before it guesses a date', () => {
+  const sets = [];
+  for (let w = 0; w < 3; w++) sets.push(set(w * 7 + 1, 20 + w * 5, { id: 40 + w }));
+  assert.equal(projectTarget(sets, 100).enough, false);
+});
+
+check('projectTarget on a rising series gives a future date', () => {
+  const sets = [];
+  // w counts weeks back from now, so the newest week (w=0) has the most reps
+  for (let w = 0; w < 8; w++) sets.push(set(w * 7 + 1, 60 - w * 5, { id: 50 + w }));
+  const p = projectTarget(sets, 100);
+  assert.equal(p.enough, true);
+  assert.ok(p.slope > 0, 'slope should be positive, got ' + p.slope);
+  assert.ok(p.weeksTo >= 1 && p.weeksTo <= 260, 'weeksTo=' + p.weeksTo);
+  assert.ok(p.date > TODAY, 'projection must be in the future: ' + p.date);
+});
+
+check('projectTarget refuses to project on a flat or falling series', () => {
+  const sets = [];
+  for (let w = 0; w < 8; w++) sets.push(set(w * 7 + 1, 30, { id: 60 + w }));
+  const p = projectTarget(sets, 100);
+  assert.equal(p.weeksTo, null);
+  assert.equal(p.date, null);
+});
+
+check('projectTarget says reached when already above the target', () => {
+  const sets = [];
+  for (let w = 0; w < 6; w++) sets.push(set(w * 7 + 1, 110, { id: 70 + w }));
+  assert.equal(projectTarget(sets, 100).weeksTo, 0);
+});
+
+/* ── form consistency ─────────────────────────────────────────── */
+
+check('setConsistency needs three reps to report anything', () => {
+  const c = setConsistency([{ durationMs: 1000, minElbow: 95 }, { durationMs: 1400, minElbow: 100 }]);
+  assert.equal(c.tempoCv, null);
+  assert.equal(c.depthCv, null);
+});
+
+check('setConsistency measures tempo spread and median', () => {
+  const reps = [900, 1000, 1100, 1000].map((d, i) => ({ durationMs: d, minElbow: 90 + i }));
+  const c = setConsistency(reps);
+  assert.equal(c.reps, 4);
+  assert.equal(c.medianMs, 1000);
+  assert.ok(c.tempoCv > 0.05 && c.tempoCv < 0.12, 'tempoCv=' + c.tempoCv);
+  assert.ok(c.depthCv < 0.05, 'depthCv=' + c.depthCv);
+});
+
+check('identical reps give zero variation', () => {
+  const c = setConsistency([1, 2, 3].map(() => ({ durationMs: 1000, minElbow: 95 })));
+  assert.equal(c.tempoCv, 0);
+  assert.equal(c.depthCv, 0);
+});
+
+check('consistencySeries skips sets without per-rep rows', () => {
+  const sets = [set(0, 10, { id: 81 }), set(1, 10, { id: 82 })];
+  const byId = { 81: [{ durationMs: 900, minElbow: 95 }, { durationMs: 1000, minElbow: 96 }, { durationMs: 950, minElbow: 94 }] };
+  const s = consistencySeries(sets, byId);
+  assert.equal(s.length, 1);
+});
+
+check('consistencySeries takes the NEWEST sets even when listSets() is newest-first', () => {
+  // three sets; only the two newest carry per-rep rows. A slice(-count) on a newest-first array
+  // would silently chart the oldest sets in the database instead.
+  const old = set(30, 10, { id: 801 });
+  const mid = set(2, 10, { id: 802 });
+  const recent = set(0, 10, { id: 803 });
+  const reps = (id) => [{ durationMs: 900, minElbow: 95 }, { durationMs: 1000, minElbow: 96 }, { durationMs: 950, minElbow: 94 }].map((r) => ({ ...r }));
+  const byId = { [mid.id]: reps(), [recent.id]: reps() };
+  const desc = consistencySeries([recent, mid, old], byId, 2);
+  const asc = consistencySeries([old, mid, recent], byId, 2);
+  assert.equal(desc.length, 2);
+  assert.deepEqual(desc.map((d) => d.id), asc.map((d) => d.id));
+  assert.deepEqual(desc.map((d) => d.id).sort(), [802, 803]);
+});
+
+check('flagMix adds flags over the window', () => {
+  const f = flagMix([set(1, 20, { id: 90, flags: { sag: 3, half: 1 } }), set(0, 10, { id: 91, flags: { pike: 2 } })], 7, TODAY);
+  assert.deepEqual({ sag: f.sag, pike: f.pike, half: f.half }, { sag: 3, pike: 2, half: 1 });
+  assert.equal(f.reps, 30);
+  assert.equal(f.sets, 2);
+});
+
+/* ── heatmap and gaps ─────────────────────────────────────────── */
+
+check('heatmap returns 7 rows per week column, ending this week', () => {
+  const cols = heatmap(byDay([set(0, 60)]), 10, 50, TODAY);
+  assert.equal(cols.length, 10);
+  assert.equal(cols[0].cells.length, 7);
+  assert.equal(cols[9].cells.filter((c) => c.future).length >= 0, true);
+  assert.equal(cols[9].cells.find((c) => c.day === TODAY).reps, 60);
+});
+
+check('heatmap levels step with the goal', () => {
+  const levelFor = (reps) => heatmap(byDay([set(0, reps, { id: 95 })]), 4, 50, TODAY)
+    .flatMap((c) => c.cells).find((c) => c.day === TODAY).level;
+  assert.equal(levelFor(10), 1);        // some work, under half the goal
+  assert.equal(levelFor(25), 2);        // half
+  assert.equal(levelFor(50), 3);        // goal met
+  assert.equal(levelFor(75), 4);        // 1.5x
+  assert.equal(levelFor(200), 4);
+  assert.equal(heatmap(byDay([]), 4, 50, TODAY).flatMap((c) => c.cells).find((c) => c.day === TODAY).level, 0);
+});
+
+check('gaps lists the empty days between two training days', () => {
+  const g = gaps(byDay([set(0, 10), set(4, 10, { id: 97 })]), 30);
+  assert.equal(g.length, 3);
+  assert.equal(g[0], addDays(TODAY, -3));
+});
+
+check('gaps needs two anchors before it claims anything is missing', () => {
+  assert.deepEqual(gaps(byDay([set(0, 10)]), 30), []);
+});
+
+/* ── summarize ────────────────────────────────────────────────── */
+
+check('summarize reports today, week, month, year and streak together', () => {
+  const sets = [set(0, 30), set(0, 20, { id: 101 }), set(8, 40, { id: 102 })];
+  const s = summarize(sets, { dailyGoal: 50 });
+  assert.equal(s.today.reps, 50);
+  assert.equal(s.goalPct, 1);
+  assert.equal(s.goalLeft, 0);
+  assert.equal(s.week.reps + s.month.reps >= 50, true);
+  assert.equal(s.lifetime, 90);
+  assert.equal(s.setsToday, 2);
+  assert.equal(s.streak, 1);
+});
+
+check('summarize with no goal does not divide by zero', () => {
+  const s = summarize([set(0, 10)], { dailyGoal: 0 });
+  assert.equal(s.goalPct, 0);
+  assert.equal(s.goalLeft, 0);
+});
+
+console.log('\n' + (fail ? fail + ' FAILED' : 'ALL CHECKS PASSED') + ' — ' + pass + ' passed, ' + fail + ' failed');
+process.exit(fail ? 1 : 0);
+__EOF_tests_stats_test_mjs__
+
 mkdir -p 'tools'
 cat > 'tools/build-stamp.sh' <<'__EOF_tools_build_stamp_sh__'
 #!/usr/bin/env bash
@@ -5173,18 +7818,21 @@ cat > 'tools/make-installer.sh' <<'__EOF_tools_make_installer_sh__'
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OUT="scripts/install-phase1.sh"
+# Usage: tools/make-installer.sh [phase-number] [what-the-phase-does]
+PHASE="${1:-1}"
+DESC="${2:-counter core}"
+OUT="scripts/install-phase${PHASE}.sh"
 TMP="$(mktemp)"
 
 FILES=$(find . -type f \
   ! -path './.git/*' ! -path './vendor/*' ! -path './models/*' ! -path './fonts/*' ! -path './icons/*' \
-  ! -name 'sw.js' ! -name 'precache.txt' ! -name 'stamp.txt' ! -name 'base-url' ! -name 'install-phase1.sh' \
+  ! -name 'sw.js' ! -name 'precache.txt' ! -name 'stamp.txt' ! -name 'base-url' ! -name 'install-phase*.sh' \
   ! -name '.DS_Store' ! -name '*.mov' ! -name '*.mp4' \
   | sed 's|^\./||' | sort)
 
 {
   echo '#!/usr/bin/env bash'
-  echo '# Pushups PWA — phase 1 installer. Self-contained: writes every source file, then downloads'
+  echo "# Pushups PWA — phase ${PHASE} installer (${DESC}). Self-contained: writes every source file, then downloads"
   echo '# the MediaPipe wasm + pose models + fonts and generates the icons. Re-runnable; overwrites'
   echo '# only files inside the app folder. Nothing here touches your saved sets (they live on the phone).'
   echo 'set -euo pipefail'
@@ -5214,15 +7862,101 @@ FILES=$(find . -type f \
   echo 'bash tools/build-stamp.sh'
   echo 'echo'
   echo 'echo "Phase 1 written to $ROOT"'
-  echo 'echo "Next: ./scripts/deploy.sh -m \"phase 1: counter core\""'
+  echo 'echo "Next: ./scripts/deploy.sh -m \"phase ${PHASE}: ${DESC}\""'
 } > "$TMP"
 
 mv "$TMP" "$OUT"
 chmod +x "$OUT"
 lines=$(wc -l < "$OUT" | tr -d ' ')
 bytes=$(wc -c < "$OUT" | tr -d ' ')
-echo "scripts/install-phase1.sh: $lines lines, $bytes bytes, $(echo "$FILES" | wc -l | tr -d ' ') files embedded"
+echo "$OUT: $lines lines, $bytes bytes, $(echo "$FILES" | wc -l | tr -d ' ') files embedded"
 __EOF_tools_make_installer_sh__
+
+mkdir -p 'tools'
+cat > 'tools/seed.js' <<'__EOF_tools_seed_js__'
+/* Dev-only fixture writer. Seeds a plausible training history so the Today and Progress screens can
+   be screenshot without doing pushups. Never imported by the app; excluded from the service worker.
+   From the console:   import('/tools/seed.js').then(m => m.seed())        // 90 days
+                      import('/tools/seed.js').then(m => m.seed(14))       // 14 days
+                      import('/tools/seed.js').then(m => m.clear())        // remove the fixtures */
+
+const TAG = 'seed';
+
+function dayKey(ms) {
+  const d = new Date(ms);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export async function seed(days = 90, seedValue = 7) {
+  const db = await import('../js/db.js');
+  const rnd = mulberry(seedValue);
+  const now = new Date();
+  let added = 0;
+  for (let back = days - 1; back >= 0; back--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back, 7, 0, 0, 0);
+    const key = dayKey(d.getTime());
+    const weekday = d.getDay();
+    if (weekday === 6) continue;                       // Saturday off
+    if (back > 40 && rnd() < 0.25) continue;           // patchier history further back
+    const fitness = 18 + (days - back) * 0.22;         // slow upward trend
+    const sets = 1 + Math.floor(rnd() * 2);
+    for (let s = 0; s < sets; s++) {
+      const reps = Math.max(3, Math.round(fitness * (0.7 + rnd() * 0.6)));
+      const startedAt = d.getTime() + s * 900000 + Math.floor(rnd() * 300000);
+      const flagged = rnd() < 0.25 ? 1 + Math.floor(rnd() * 2) : 0;
+      const id = await db.saveSet({
+        startedAt, endedAt: startedAt + reps * 3200, durationMs: reps * 3200,
+        mode: 'camera', source: 'camera', repsDetected: reps + flagged, repsFinal: reps,
+        flags: { sag: flagged, pike: 0, half: flagged, lockout: 0, lost: 0 },
+        cameraUsed: 'environment', qualityStats: { fpsMean: 22, visMean: 0.82, frames: 400, breaks: 0 },
+        paramsUsed: { top: 155, bottom: 100, minRepMs: 400 }, presetName: 'standard', model: 'lite',
+        notes: '', day: key, [TAG]: true,
+      }, makeReps(reps + flagged, rnd));
+      added += 1;
+      void id;
+    }
+  }
+  return { added, days };
+}
+
+function makeReps(n, rnd) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push({
+      tMs: i * (2600 + Math.floor(rnd() * 500)),
+      durationMs: 2200 + Math.floor(rnd() * 900),
+      minElbow: 88 + Math.floor(rnd() * 22),
+      maxElbow: 158 + Math.floor(rnd() * 14),
+      shoulderDrop: 0.12 + rnd() * 0.1,
+      hipOffset: (rnd() - 0.45) * 0.2,
+      side: rnd() < 0.5 ? 'left' : 'right',
+      flags: [],
+      n: i + 1,
+    });
+  }
+  return out;
+}
+
+export async function clear() {
+  const db = await import('../js/db.js');
+  const all = await db.listSets();
+  let n = 0;
+  for (const s of all) {
+    if (s && s[TAG]) { await db.deleteSet(s.id); n += 1; }
+  }
+  return { removed: n, left: (await db.listSets()).length };
+}
+__EOF_tools_seed_js__
 
 mkdir -p 'tools'
 cat > 'tools/serve.py' <<'__EOF_tools_serve_py__'
@@ -5376,7 +8110,7 @@ for (const [kind, arg] of steps) {
   if (kind === 'wait') { await sleep(Number(arg)); continue; }
   const expr = kind === 'click'
     ? `(() => { const el = document.querySelector(${JSON.stringify(arg)}); if (!el) throw new Error('no element ' + ${JSON.stringify(arg)}); el.click(); return 'clicked'; })()`
-    : `String(${arg})`;
+    : `(async () => { const v = await (${arg}); return typeof v === 'string' ? v : JSON.stringify(v); })()`;
   const res = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
   if (res.exceptionDetails) {
     console.error('  [step failed]', arg, res.exceptionDetails.exception?.description || '');
@@ -5469,4 +8203,4 @@ echo "/pushups-pwa/" > tools/base-url
 bash tools/build-stamp.sh
 echo
 echo "Phase 1 written to $ROOT"
-echo "Next: ./scripts/deploy.sh -m \"phase 1: counter core\""
+echo "Next: ./scripts/deploy.sh -m \"phase ${PHASE}: ${DESC}\""

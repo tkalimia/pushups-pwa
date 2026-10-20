@@ -4,18 +4,21 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OUT="scripts/install-phase1.sh"
+# Usage: tools/make-installer.sh [phase-number] [what-the-phase-does]
+PHASE="${1:-1}"
+DESC="${2:-counter core}"
+OUT="scripts/install-phase${PHASE}.sh"
 TMP="$(mktemp)"
 
 FILES=$(find . -type f \
   ! -path './.git/*' ! -path './vendor/*' ! -path './models/*' ! -path './fonts/*' ! -path './icons/*' \
-  ! -name 'sw.js' ! -name 'precache.txt' ! -name 'stamp.txt' ! -name 'base-url' ! -name 'install-phase1.sh' \
+  ! -name 'sw.js' ! -name 'precache.txt' ! -name 'stamp.txt' ! -name 'base-url' ! -name 'install-phase*.sh' \
   ! -name '.DS_Store' ! -name '*.mov' ! -name '*.mp4' \
   | sed 's|^\./||' | sort)
 
 {
   echo '#!/usr/bin/env bash'
-  echo '# Pushups PWA — phase 1 installer. Self-contained: writes every source file, then downloads'
+  echo "# Pushups PWA — phase ${PHASE} installer (${DESC}). Self-contained: writes every source file, then downloads"
   echo '# the MediaPipe wasm + pose models + fonts and generates the icons. Re-runnable; overwrites'
   echo '# only files inside the app folder. Nothing here touches your saved sets (they live on the phone).'
   echo 'set -euo pipefail'
@@ -45,11 +48,11 @@ FILES=$(find . -type f \
   echo 'bash tools/build-stamp.sh'
   echo 'echo'
   echo 'echo "Phase 1 written to $ROOT"'
-  echo 'echo "Next: ./scripts/deploy.sh -m \"phase 1: counter core\""'
+  echo 'echo "Next: ./scripts/deploy.sh -m \"phase ${PHASE}: ${DESC}\""'
 } > "$TMP"
 
 mv "$TMP" "$OUT"
 chmod +x "$OUT"
 lines=$(wc -l < "$OUT" | tr -d ' ')
 bytes=$(wc -c < "$OUT" | tr -d ' ')
-echo "scripts/install-phase1.sh: $lines lines, $bytes bytes, $(echo "$FILES" | wc -l | tr -d ' ') files embedded"
+echo "$OUT: $lines lines, $bytes bytes, $(echo "$FILES" | wc -l | tr -d ' ') files embedded"
