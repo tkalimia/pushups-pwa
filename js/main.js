@@ -38,7 +38,7 @@ async function render() {
   current = await view(host, { route: name, render, params: new URLSearchParams(location.search) });
 }
 
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => { render().catch(fail); });
 
 // ── update prompt ──
 function showBanner(reload) {

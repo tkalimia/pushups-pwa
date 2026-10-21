@@ -150,16 +150,17 @@ export async function listCameras() {
   }
 }
 
-export function describeCameraError(err) {
+export function describeCameraError(err, opts = {}) {
   const name = (err && err.name) || '';
   const message = (err && err.message) || '';
+  const standalone = !!(opts && opts.standalone);
 
   if (typeof window !== 'undefined' && window.isSecureContext === false) {
     return {
       title: 'The camera needs a secure (HTTPS) address',
       steps: [
         'iOS and macOS block the camera on plain http:// pages, and on any address other than localhost.',
-        'Open the app through its https:// address, or tap the Share button in Safari and choose Add to Home Screen so it loads over HTTPS.',
+        'Open the app through its https:// address in Safari.',
         'If you are testing on your own machine, use https://localhost or a TLS tunnel, then reload.',
       ],
     };
@@ -170,7 +171,12 @@ export function describeCameraError(err) {
     case 'PermissionDeniedError':
       return {
         title: 'Camera permission was blocked',
-        steps: [
+        steps: standalone ? [
+          'iOS gives the camera to Safari tabs but never to a web app opened from its Home Screen icon — that is an Apple limitation, not a setting.',
+          'Open this address in Safari and allow the camera there once.',
+          'Reach it in one tap by adding it to Safari Favorites or Bookmarks instead of the Home Screen.',
+          'If it still says blocked: Settings ▸ Safari ▸ Camera ▸ Allow or Ask, then reload the tab.',
+        ] : [
           'Tap the camera or page-info icon in the address bar and set Camera to Allow, then reload.',
           'If it still says blocked: Settings ▸ Safari ▸ Camera ▸ Allow (or "Ask"), then scroll back to the app.',
           'For a home-screen app: Settings ▸ pushups ▸ Camera ▸ Allow.',
@@ -208,10 +214,13 @@ export function describeCameraError(err) {
     case 'SecurityError':
       return {
         title: 'The browser blocked camera access for security',
-        steps: [
+        steps: standalone ? [
+          'This page is running as a Home Screen web app, where iOS withholds the camera. Open the same address in Safari.',
+          'Confirm the address starts with https:// (or localhost).',
+        ] : [
           'Confirm the page address starts with https:// (or localhost).',
           'Reload the page.',
-          'If the app came from a Home Screen icon, delete it and add it again from the https:// page.',
+          'If the app came from a Home Screen icon, remove it and use the Safari tab.',
         ],
       };
     case 'NotSupportedError':

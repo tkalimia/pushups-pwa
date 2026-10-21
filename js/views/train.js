@@ -4,7 +4,7 @@ import { createTracker } from '../pose.js';
 import { Counter } from '../counter.js';
 import { saveSet, listSetsForDay } from '../db.js';
 import { unlockAudio, speak, playBeep, playWarning, vibrate, announceRep, countdownVoice } from '../feedback.js';
-import { requestWakeLock, tryBadging } from '../upgrade.js';
+import { requestWakeLock, tryBadging, isStandalone } from '../upgrade.js';
 import { today, dayOf, fmtClock, fmtInt, clamp, pct, h } from '../util.js';
 
 const LM = { HEAD: 0, SHOULDER: 11, ELBOW: 13, WRIST: 15, HIP: 23, ANKLE: 27 };
@@ -721,11 +721,13 @@ export default function train(host) {
   }
 
   function camFail(err) {
-    const d = (dce || describeCameraError)(err);
+    // `dce` used to be referenced here and exists nowhere — the ReferenceError it threw meant
+    // no camera failure ever reached the screen.
+    const d = describeCameraError(err, { standalone: isStandalone() });
     els.camoff.hidden = false;
     els.camoff.replaceChildren();
     const h3 = document.createElement('div');
-    h3.style.color = 'var(--text)';
+    h3.style.color = 'var(--porcelain)';
     h3.style.fontWeight = '600';
     h3.textContent = d.title;
     const ol = document.createElement('ol');
