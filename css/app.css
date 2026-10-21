@@ -166,6 +166,13 @@ label.tog .sub{display:block;font-size:12px}
   gap:14px;padding:24px;text-align:center;color:#8A9C97;font-size:14px;background:var(--cam)}
 .camoff h3{margin:0 0 6px;color:var(--porcelain);font:600 16px/1.3 var(--ui)}
 .camoff ol{margin:0;padding-left:18px;font-size:13px;line-height:1.55;text-align:left}
+/* the two exits from the standalone dead end */
+.camoff .act{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.camoff .act a,.camoff .act button{display:inline-flex;align-items:center;justify-content:center;
+  min-height:44px;padding:0 16px;border-radius:12px;border:0;font:600 14px/1 var(--ui);text-decoration:none}
+.camoff .act .primary{background:var(--brass-fill);color:var(--on-brass)}
+.camoff .act .ghost{background:transparent;color:var(--porcelain);box-shadow:inset 0 0 0 1px rgba(233,238,234,.3)}
+.camoff .addr{font-size:12px;line-height:1.4;color:var(--porcelain);word-break:break-all;max-width:32ch}
 .pill{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:8px;
   padding:6px 12px;border-radius:999px;background:var(--scrim);color:var(--porcelain);font-size:13px;
   font-variant-numeric:tabular-nums}

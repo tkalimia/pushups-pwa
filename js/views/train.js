@@ -737,7 +737,43 @@ export default function train(host) {
       ol.append(li);
     });
     els.camoff.append(h3, ol);
+    if (isStandalone()) appendSafariExits();
     els.pillText.textContent = 'camera blocked';
+  }
+
+  /* The Home Screen icon can never have the camera, so the screen has to hand him to Safari
+     rather than explain Apple's policy at him. stopPropagation because a tap here is a button
+     press, not the wake gesture the preview overlay listens for. */
+  function appendSafariExits() {
+    const url = location.href.split('#')[0] + '#/train';
+    const row = document.createElement('div');
+    row.className = 'act';
+    const link = document.createElement('a');
+    link.className = 'primary';
+    link.textContent = 'Open in Safari';
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.addEventListener('click', (e) => e.stopPropagation());
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'ghost';
+    copy.textContent = 'Copy address';
+    copy.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const fallback = () => {
+        const addr = document.createElement('div');
+        addr.className = 'addr';
+        addr.textContent = url;
+        els.camoff.append(addr);
+        copy.remove();
+      };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(url).then(() => { copy.textContent = 'Copied — paste in Safari'; }, fallback);
+      } else fallback();
+    });
+    row.append(link, copy);
+    els.camoff.append(row);
   }
 
   renderSetup();

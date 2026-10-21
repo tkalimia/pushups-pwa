@@ -30,6 +30,8 @@ const evalJs = async (expression) => {
   return r.result?.value;
 };
 
+// Run as  CAMFAIL=tab node tools/camfailcheck.mjs  to emulate a plain Safari tab.
+const TAB = process.env.CAMFAIL === 'tab';
 for (let i = 0; i < 80; i++) {
   try {
     const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
@@ -64,9 +66,10 @@ await send('Page.addScriptToEvaluateOnNewDocument', {
   source: `
     navigator.mediaDevices.getUserMedia = () =>
       Promise.reject(new DOMException('Permission denied', 'NotAllowedError'));
+    ${TAB ? '' : `
     const _mm = window.matchMedia.bind(window);
     window.matchMedia = (q) =>
-      String(q).includes('display-mode') ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : _mm(q);
+      String(q).includes('display-mode') ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : _mm(q);`}
   `,
 });
 
@@ -81,22 +84,40 @@ const out = JSON.parse(await evalJs(`(() => {
   const title = card?.querySelector('div')?.textContent?.trim() || '';
   const steps = [...(card?.querySelectorAll('li,div') || [])].map((n) => n.textContent.trim()).filter(Boolean);
   const t = getComputedStyle(card?.firstElementChild || card).color;
+  const go = card?.querySelector('.act a');
+  const cp = card?.querySelector('.act button');
   return JSON.stringify({
     visible: !!card && !card.hidden,
     title,
     steps,
     lines: steps.length,
     titleColor: t,
+    safariLink: go ? { text: go.textContent.trim(), target: go.target, href: go.href } : null,
+    copyBtn: cp ? cp.textContent.trim() : null,
   });
 })()`));
 
+await evalJs(`(() => { document.querySelector('#camoff .act button')?.click(); return 1 })()`);
+await sleep(1200);
+out.afterCopy = JSON.parse(await evalJs(`(() => {
+  const b = document.querySelector('#camoff .act button');
+  return JSON.stringify({ label: b?.textContent?.trim() || null, addr: document.querySelector('#camoff .addr')?.textContent || null });
+})()`));
+
 const shot = await send('Page.captureScreenshot', { format: 'png' });
-writeFileSync('/tmp/camfail.png', Buffer.from(shot.data, 'base64'));
+writeFileSync(`/tmp/camfail-${TAB ? 'tab' : 'standalone'}.png`, Buffer.from(shot.data, 'base64'));
 
 console.log(JSON.stringify(out, null, 2));
-const ok = out.visible
+const ok = (TAB
+  ? out.visible && out.title === 'Camera permission was blocked'
+    && out.safariLink === null && out.copyBtn === null
+    && out.steps[1].includes('address bar')
+  : out.visible && out.title === 'Camera permission was blocked'
+    && out.safariLink?.text === 'Open in Safari' && out.safariLink?.target === '_blank'
+    && out.safariLink?.href?.includes('#/train') && out.copyBtn === 'Copy address'
+    && !!(out.afterCopy?.label || out.afterCopy?.addr))
   && out.title === 'Camera permission was blocked'
   && out.lines >= 5
   && out.titleColor === 'rgb(233, 238, 234)';
-if (!ok) console.error('  the failure did not reach the screen, or reached it unreadable');
+if (!ok) console.error('  the failure did not reach the screen, or reached it without the Safari exits');
 process.exit(ok ? 0 : 1);
