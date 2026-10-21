@@ -1,4 +1,9 @@
-const METADATA_TIMEOUT_MS = 5000;
+const METADATA_TIMEOUT_MS = 3000;
+/* Hard ceiling on the whole preview handshake. play() is what needs it: on iOS it can stay
+   pending forever, and a pending await there used to strand the caller mid-function. */
+const PREVIEW_DEADLINE_MS = 3500;
+
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 export function cameraSupports(videoEl) {
   void videoEl;
@@ -7,25 +12,24 @@ export function cameraSupports(videoEl) {
     && typeof navigator.mediaDevices.getUserMedia === 'function');
 }
 
+// Resolves on the first frame's metadata or on the timeout, whichever comes first. It never
+// rejects: a missing preview is a display problem, not a reason to abandon a live camera stream.
 function waitMetadata(videoEl) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (videoEl.readyState >= 1 && videoEl.videoWidth > 0) {
-      resolve();
+      resolve(false);
       return;
     }
     let done = false;
-    const finish = (err) => {
+    const finish = (timedOut) => {
       if (done) return;
       done = true;
       videoEl.removeEventListener('loadedmetadata', ok);
       clearTimeout(timer);
-      if (err) reject(err);
-      else resolve();
+      resolve(timedOut);
     };
-    const ok = () => finish(null);
-    const timer = setTimeout(() => {
-      finish(new Error('Camera preview timed out after 5 seconds. Close other apps using the camera, then tap Start again.'));
-    }, METADATA_TIMEOUT_MS);
+    const ok = () => finish(false);
+    const timer = setTimeout(() => finish(true), METADATA_TIMEOUT_MS);
     videoEl.addEventListener('loadedmetadata', ok, { once: true });
   });
 }
@@ -68,8 +72,6 @@ export async function openCamera(videoEl, opts = {}) {
   videoEl.muted = true;
   videoEl.srcObject = stream;
 
-  await waitMetadata(videoEl);
-
   const track = stream.getVideoTracks()[0];
   const info = describeTrack(track, facing);
   const settings = {
@@ -79,12 +81,21 @@ export async function openCamera(videoEl, opts = {}) {
     deviceId: info.deviceId,
     facing: info.facingMode === 'user' ? 'user' : facing,
     needsTap: false,
+    stalled: false,
   };
 
-  try {
-    await videoEl.play();
-  } catch (err) {
-    void err;
+  /* Safari will not feed frames to a srcObject <video> until play() is called, and play() can
+     itself stay pending when the page cannot present video. So: kick play() without awaiting it,
+     and wait for metadata behind a deadline. Awaiting play() used to hang here forever, which
+     left the stream unreturned — nothing could stop it, the camera light stayed on across
+     navigation, and the pose engine was never created. */
+  const started = videoEl.play();
+  if (started && typeof started.catch === 'function') {
+    started.catch(() => { settings.needsTap = true; });
+  }
+  await Promise.race([waitMetadata(videoEl), sleep(PREVIEW_DEADLINE_MS)]);
+  if (videoEl.readyState < 2 || videoEl.videoWidth === 0) {
+    settings.stalled = true;
     settings.needsTap = true;
   }
 

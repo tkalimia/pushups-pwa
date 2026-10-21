@@ -695,13 +695,22 @@ export default function train(host) {
       cam = await openCamera(els.video, { facing });
       mirror = (cam.settings && cam.settings.facing) === 'user';
       if (cam.settings && cam.settings.needsTap) {
-        // iOS refused to autoplay outside a gesture: the next tap anywhere restarts the preview
+        // iOS refused to autoplay outside a gesture (or never presented a frame): the next tap
+        // anywhere restarts the preview. The counting loop does not wait for it either way.
         const wake = () => { resumePreview(els.video); els.camoff.hidden = true; };
         els.camoff.hidden = false;
         els.camoff.replaceChildren();
         const hint = document.createElement('div');
-        hint.textContent = 'Tap to show the preview';
-        els.camoff.append(hint);
+        hint.style.color = 'var(--porcelain)';
+        hint.style.fontWeight = '600';
+        hint.textContent = cam.settings.stalled
+          ? 'Camera is on, no preview'
+          : 'Tap to show the preview';
+        const sub = document.createElement('div');
+        sub.textContent = cam.settings.stalled
+          ? 'Tap the screen to wake it. Counting still needs the phone facing you.'
+          : 'Tap anywhere on the black area.';
+        els.camoff.append(hint, sub);
         els.camoff.addEventListener('click', wake, { once: true });
       }
       if (tracker && tracker.setMirrored) tracker.setMirrored(mirror);
@@ -733,8 +742,10 @@ export default function train(host) {
 
   (async () => {
     if (load().manualMode) return;
-    await startCamera(load().camera);
-    tracker = await createTracker({
+    /* The engine is built first so the wasm and the .task file start downloading while the
+       permission prompt is still on screen — they are ~15 MB, and waiting for the answer first
+       meant half a minute of "starting" on mobile data after every Allow. */
+    tracker = createTracker({
       video: els.video,
       canvas: els.overlay,
       model: load().model,
@@ -754,7 +765,9 @@ export default function train(host) {
         console.error('pose', e);
       },
     });
-    await tracker.start();
+    await startCamera(load().camera);
+    await tracker.ready;
+    if (tracker.getStatus().phase !== 'failed') tracker.start();
   })();
 
   return {

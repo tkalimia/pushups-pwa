@@ -128,6 +128,11 @@ export function createTracker(options = {}) {
     gpuFailed: delegate === 'cpu',
     swapping: false,
     booting: false,
+    /* A loop that silently stops producing frames is undiagnosable from the outside — every
+       early return below looks identical on screen. These counters ride along in getStatus(). */
+    ticks: 0,
+    detects: 0,
+    skip: { pending: 0, swapping: 0, rate: 0, video: 0 },
   };
 
   let landmarker = null;
@@ -294,42 +299,42 @@ export function createTracker(options = {}) {
   function loop() {
     if (!st.running || st.disposed) return;
     st.raf = requestAnimationFrame(loop);
-    if (st.pending || st.swapping || !landmarker) return;
+    st.ticks += 1;
+    if (st.pending) { st.skip.pending += 1; return; }
+    if (st.swapping || !landmarker) { st.skip.swapping += 1; return; }
     const now = performance.now();
-    if (now - st.lastDetect < 1000 / st.fpsCap) return;
-    if (!video || video.readyState < 2 || video.videoWidth === 0) return;
+    if (now - st.lastDetect < 1000 / st.fpsCap) { st.skip.rate += 1; return; }
+    if (!video || video.readyState < 2 || video.videoWidth === 0) { st.skip.video += 1; return; }
 
     st.lastDetect = now;
+    st.detects += 1;
     st.pending = true;
     let ts = Math.round(now);
     if (ts <= st.lastTs) ts = st.lastTs + 1;
     st.lastTs = ts;
 
     const inst = landmarker;
-    let promise = null;
-    try {
-      promise = inst.detectForVideo(video, ts);
-    } catch (err) {
+    const settle = (res) => {
       st.pending = false;
+      if (st.disposed) return;
+      handleResult(res, ts);
+      flushPendingClose();
+    };
+    const fail = (err) => {
+      st.pending = false;
+      if (st.disposed) return;
       handleDetectFailure(err);
+    };
+    let out = null;
+    try {
+      out = inst.detectForVideo(video, ts);
+    } catch (err) {
+      fail(err);
       return;
     }
-    if (!promise || typeof promise.then !== 'function') {
-      st.pending = false;
-      return;
-    }
-    promise
-      .then((res) => {
-        st.pending = false;
-        if (st.disposed) return;
-        handleResult(res, ts);
-        flushPendingClose();
-      })
-      .catch((err) => {
-        st.pending = false;
-        if (st.disposed) return;
-        handleDetectFailure(err);
-      });
+    // Sync in 0.10.x, promise in older builds: accept either, and never drop the frame.
+    if (out && typeof out.then === 'function') out.then(settle, fail);
+    else settle(out);
   }
 
   async function warmUp() {
@@ -452,6 +457,14 @@ export function createTracker(options = {}) {
         delegate: st.delegate,
         fps: st.fps,
         fpsCap: st.fpsCap,
+        ticks: st.ticks,
+        detects: st.detects,
+        skip: st.skip,
+        video: video ? video.readyState + '/' + video.videoWidth : 'none',
+        ticks: st.ticks,
+        detects: st.detects,
+        skip: st.skip,
+        video: video ? video.readyState + '/' + video.videoWidth : 'none',
         mirrored: st.mirrored,
         present: frame.present,
         quality: frame.quality,

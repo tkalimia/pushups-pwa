@@ -158,7 +158,7 @@ export default function debugView(host) {
     });
   }
 
-  function attachTracker(target) {
+  async function attachTracker(target) {
     if (tracker && tracker.dispose) tracker.dispose();
     repLog = [];
     frames = 0;
