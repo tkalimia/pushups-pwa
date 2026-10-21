@@ -1,5 +1,9 @@
-const CACHE = 'pushups-v-2610210927';
+const CACHE = 'pushups-v-2610211049';
 const PRECACHE = [
+  ".repcheck/pushups_16x9.y4m",
+  ".repcheck/pushups_480.webm",
+  ".repcheck/pushups_rep.y4m",
+  ".repcheck/pushups_src.webm",
   "css/app.css",
   "css/progress.css",
   "css/today.css",

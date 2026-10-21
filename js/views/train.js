@@ -270,7 +270,7 @@ export default function train(host) {
       noPose: 'nothing detected yet',
       lowVis: 'too few landmarks',
       notSide: 'needs a side view',
-      bodyAngle: 'body not level',
+      bodyAngle: 'you look upright — get on the floor',
       hip: 'hips off the line',
     })[r] || r;
   }
@@ -793,7 +793,13 @@ export default function train(host) {
       onStatus: (kind, detail) => {
         if (kind === 'loading-model') els.pillText.textContent = 'loading pose model';
         else if (kind === 'delegate-downgrade') els.pillText.textContent = 'cpu mode · ' + (detail || '');
-        else if (kind === 'ready' || kind === 'running') clearWarn();
+        else if (kind === 'ready' || kind === 'running') {
+          clearWarn();
+          // The engine can be perfectly ready while the camera has handed over zero frames; the
+          // pill used to keep saying "loading pose model" and sent everyone looking at the wrong
+          // half of the pipeline.
+          if (!lastFrameAt) els.pillText.textContent = 'engine ready · no video yet';
+        }
       },
       onFrame: (f) => {
         try { onFrame(f); } catch (e) { console.error('frame', e); }

@@ -2,12 +2,11 @@
 //   node tools/shots.mjs <url> <out.png> [--dark] [--light] [--step <js>] [--wait <ms>] [--click <selector>]
 // Chrome flags include a fake camera device, so #/train reaches the real setup layout.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9333;
 const W = Number(process.env.SHOT_W || 402), H = Number(process.env.SHOT_H || 874);
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 
@@ -31,7 +30,7 @@ while (argv.length) {
 // Fresh profile per run — a leftover service worker would serve its own stale precache.
 const profile = mkdtempSync(join(tmpdir(), 'pushups-shot-'));
 const chrome = spawn(CHROME, [
-  '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
+  '--headless=new', `--remote-debugging-port=0`, `--user-data-dir=${profile}`,
   `--window-size=${W},${H}`, `--user-agent=${UA}`,
   '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
   '--hide-scrollbars', '--allow-running-insecure-content', '--mute-audio',
@@ -40,12 +39,37 @@ const chrome = spawn(CHROME, [
 let chromeErr = '';
 chrome.stderr.on('data', (d) => { chromeErr += d.toString(); });
 
+// A harness that exits through an exception used to leave its Chrome running for hours, holding a
+// debug port and a camera. This runs on every path out, including the ones that throw.
+const teardown = () => { try { chrome.kill('SIGKILL'); } catch (err) { void err; } };
+process.on('exit', teardown);
+process.on('uncaughtException', () => { teardown(); process.exit(1); });
+process.on('SIGINT', () => { teardown(); process.exit(130); });
+process.on('SIGTERM', () => { teardown(); process.exit(143); });
+
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Chrome binds an ephemeral port and records it in its own profile directory. A hard-coded port
+// is a race that the previous run wins: the new Chrome cannot bind, and the CDP client attaches
+// to the stale browser instead — with a different camera, a different cache and a different build.
+const readPort = async () => {
+  for (let i = 0; i < 120; i++) {
+    try {
+      const line = readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').trim().split('\n')[0];
+      if (Number(line) > 0) return Number(line);
+    } catch (err) { void err; }
+    await sleep(250);
+  }
+  return 0;
+};
+let CDP_PORT = 0;
+
 
 async function target() {
   for (let i = 0; i < 60; i++) {
     try {
-      const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+      if (!CDP_PORT) CDP_PORT = await readPort();
+      const list = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
       const page = list.find((t) => t.type === 'page');
       if (page) return page;
     } catch { /* still starting */ }

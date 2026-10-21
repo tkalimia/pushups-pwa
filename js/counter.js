@@ -17,7 +17,12 @@ const SIDE_SWITCH_MARGIN = 0.08;
 const QUALITY_MIN = 0.35;
 const QUALITY_LOST = 0.15;
 const QUALITY_REP_MIN = 0.4;
-const BODY_ANGLE_MAX = 12;
+/* A phone lying on the floor — the setup this app asks for — sees a straight plank as a line
+   tilted 30 degrees or more, because the body sits half a metre above the lens and perspective
+   pulls the far end toward the horizon. Demanding "level" therefore rejects every real set. What
+   the angle can still prove is that the subject is upright, so that is all it is used for;
+   straightness is hipOffset's job, and a perpendicular deviation is tilt-invariant. */
+const BODY_ANGLE_MAX = 70;
 const HIP_GATE = 0.16;
 const HIP_GATE_EMA_ALPHA = 0.12;
 // Landmarks are normalised per-axis, so the frame diagonal is unknown. A 4:3 sensor is assumed.

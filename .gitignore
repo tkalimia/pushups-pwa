@@ -1,4 +1,6 @@
 .DS_Store
+# harness video clips — rebuilt by scripts/fetch-rep-video.sh, never committed
+.repcheck/
 *.mov
 *.mp4
 tools/base-url

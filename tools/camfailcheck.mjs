@@ -1,20 +1,44 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9335;
 const URL = `http://127.0.0.1:8099/index.html?camfail=${Date.now()}#/train`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Chrome binds an ephemeral port and records it in its own profile directory. A hard-coded port
+// is a race that the previous run wins: the new Chrome cannot bind, and the CDP client attaches
+// to the stale browser instead — with a different camera, a different cache and a different build.
+const readPort = async () => {
+  for (let i = 0; i < 120; i++) {
+    try {
+      const line = readFileSync(join(PROFILE, 'DevToolsActivePort'), 'utf8').trim().split('\n')[0];
+      if (Number(line) > 0) return Number(line);
+    } catch (err) { void err; }
+    await sleep(250);
+  }
+  return 0;
+};
+let CDP_PORT = 0;
 
+
+const PROFILE = mkdtempSync(join(tmpdir(), 'pushups-camfail-'));
 const chrome = spawn(CHROME, [
-  '--headless=new', `--remote-debugging-port=${PORT}`,
-  `--user-data-dir=${mkdtempSync(join(tmpdir(), 'pushups-camfail-'))}`,
+  '--headless=new', `--remote-debugging-port=0`,
+  `--user-data-dir=${PROFILE}`,
   '--window-size=402,874', '--mute-audio', 'about:blank',
 ], { stdio: ['ignore', 'ignore', 'pipe'] });
 let chromeErr = '';
 chrome.stderr.on('data', (d) => { chromeErr += d.toString(); });
+
+// A harness that exits through an exception used to leave its Chrome running for hours, holding a
+// debug port and a camera. This runs on every path out, including the ones that throw.
+const teardown = () => { try { chrome.kill('SIGKILL'); } catch (err) { void err; } };
+process.on('exit', teardown);
+process.on('uncaughtException', () => { teardown(); process.exit(1); });
+process.on('SIGINT', () => { teardown(); process.exit(130); });
+process.on('SIGTERM', () => { teardown(); process.exit(143); });
+
 
 let id = 0;
 const pending = new Map();
@@ -34,7 +58,8 @@ const evalJs = async (expression) => {
 const TAB = process.env.CAMFAIL === 'tab';
 for (let i = 0; i < 80; i++) {
   try {
-    const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+    if (!CDP_PORT) CDP_PORT = await readPort();
+    const list = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
     const page = list.find((t) => t.type === 'page');
     if (page) {
       ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -59,6 +84,9 @@ await send('Page.enable');
 await send('Runtime.enable');
 await send('Network.enable');
 await send('Network.setBypassServiceWorker', { bypass: true });
+// Bypassing the service worker does not bypass the HTTP cache: without this a patched ES module
+// stays stale in the harness and a real fix looks like it had no effect.
+await send('Network.setCacheDisabled', { cacheDisabled: true });
 await send('Emulation.setDeviceMetricsOverride', { width: 402, height: 874, deviceScaleFactor: 2, mobile: true });
 
 // Deny the camera before any app script runs, the way iOS does in a Home Screen web app.

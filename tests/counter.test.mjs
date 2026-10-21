@@ -16,7 +16,8 @@ const HIP_X = 0.5;
 const WRIST_R = 0.12;
 
 // Plausible side-view plank: mid-shoulder / mid-hip / mid-ankle on a line that tilts with depth.
-// phi (deg) is exactly what bodyAngleOf() reports, so tilt == 45 gives a kneeling-looking shape.
+// phi (deg) is exactly what bodyAngleOf() reports. A tilted-but-rigid body is an INCLINE plank
+// (hands on a bench), which is a legal pushup; kneeling is a fold at the hip, expressed by hipOff.
 // The wrist is placed on a circle of radius 0.12 around the elbow, rotated by the requested
 // elbow angle away from the upper arm — the landmarks really do produce that angle.
 function makeLandmarks({ angle, depth = 0, hipOff = 0, tilt = null, vis = 0.95 }) {
@@ -109,9 +110,9 @@ function freshCounter(extra = {}) {
   return c;
 }
 
-// Arm the counter with a clean, valid plank.
-function arm(c, t0) {
-  const { frames, tEnd } = holdFrames(t0, Math.ceil(3000 / STEP) + 20);
+// Arm the counter with a clean, valid plank (optionally at a fixed body tilt).
+function arm(c, t0, opts = {}) {
+  const { frames, tEnd } = holdFrames(t0, Math.ceil(3000 / STEP) + 20, opts);
   const out = run(c, frames);
   return { out, t: tEnd };
 }
@@ -178,7 +179,7 @@ function arm(c, t0) {
   let sawArmBreak = false;
   let t = a.t + 300;
   for (let i = 0; i < 60; i++) {
-    const out = c.addFrame(t, makeFrame({ angle: 170, depth: 0, tilt: 45 }));
+    const out = c.addFrame(t, makeFrame({ angle: 170, depth: 0, tilt: 78, hipOff: 0.4 }));
     if (out.events.some((e) => e.type === 'armBreak')) sawArmBreak = true;
     t += STEP;
   }
@@ -186,6 +187,19 @@ function arm(c, t0) {
   check('T3 kneeling adds zero reps', c.reps === 5);
   check('T3 counter disarms and stays idle', c.armed === false && c.state === 'idle');
   console.log('      T3 detail: reps=' + c.reps + ' detected=' + c.repsDetected + ' armed=' + c.armed + ' state=' + c.state);
+}
+
+/* ---------- 3b. incline plank: a straight body that a floor camera sees at 45 deg ---------- */
+{
+  const c = freshCounter();
+  const a = arm(c, 0, { tilt: 45 });
+  check('T3b incline plank arms (no bodyAngle refusal)', a.out.armed === true && a.out.plank.valid === true);
+  const tilted = repFrames(a.t, 4).frames.map((f) => ({ t: f.t, opt: { ...f.opt, tilt: 45 } }));
+  const out = run(c, tilted);
+  check('T3b incline plank counts four reps', out.reps === 4);
+  console.log('      T3b detail: reps=' + out.reps + ' detected=' + out.repsDetected +
+    ' armed=' + out.armed + ' bodyAngle=' + out.bodyAngle.toFixed(1) +
+    ' reasons=' + JSON.stringify(out.plank.reasons) + ' state=' + out.state);
 }
 
 /* ---------- 4. double beat at the bottom counts one ---------- */
@@ -362,6 +376,13 @@ function arm(c, t0) {
   const out = c.addFrame(a.t, makeFrame({ angle: 178, depth: 0, tilt: 80 }));
   console.log('      extra: tilt 80 -> reasons=' + JSON.stringify(out.plank.reasons) + ' bodyAngle=' + out.bodyAngle.toFixed(1));
   check('extra: steep tilt reports bodyAngle', out.plank.reasons.includes('bodyAngle'));
+
+  const cT = freshCounter();
+  const aT = arm(cT, 0, { tilt: 45 });
+  const okT = cT.addFrame(aT.t, makeFrame({ angle: 178, depth: 0, tilt: 45 }));
+  console.log('      extra: tilt 45 -> reasons=' + JSON.stringify(okT.plank.reasons) +
+    ' bodyAngle=' + okT.bodyAngle.toFixed(1));
+  check('extra: a 45 deg straight body is never refused for tilt', !okT.plank.reasons.includes('bodyAngle'));
 
   const c2 = freshCounter();
   const a2 = arm(c2, 0);
